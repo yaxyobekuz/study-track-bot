@@ -1,7 +1,7 @@
 {
   "name": "study-track-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Telegram bot for sending daily grade reports to parents",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -10,6 +10,7 @@
   "dependencies": {
     "agenda": "^5.0.0",
     "axios": "^1.11.0",
+    "bcrypt": "^5.1.1",
     "dotenv": "^16.3.1",
     "mongoose": "^7.5.0",
     "node-telegram-bot-api": "^0.67.0",
@@ -18,7 +19,7 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "keywords": [],
+  "keywords": ["telegram", "bot", "grades", "school"],
   "author": "",
   "license": "ISC"
 }
