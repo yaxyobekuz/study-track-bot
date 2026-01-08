@@ -5,6 +5,7 @@ const {
   prepareDailyReportData,
   sendDailyReports,
 } = require("../services");
+const Holiday = require("../models/holiday.model");
 
 // Bot instance global variable
 let botInstance = null;
@@ -29,6 +30,15 @@ const sendDailyReportsJob = async () => {
   }
 
   try {
+    // Holiday check
+    const holidayCheck = await Holiday.isHoliday(new Date());
+    if (holidayCheck.isHoliday) {
+      console.log(
+        `🎉 Bugun dam olish kuni: ${holidayCheck.holiday.name}. Hisobotlar yuborilmaydi.`
+      );
+      return;
+    }
+
     // Get active users
     const tgUsers = await getActiveNotificationUsers();
     console.log(`👥 Found ${tgUsers.length} active users`);
