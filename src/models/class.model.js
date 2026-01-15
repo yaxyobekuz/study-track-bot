@@ -13,22 +13,6 @@ const classSchema = new mongoose.Schema(
         "Sinf nomi maksimal 32 ta belgidan iborat bo'lishi kerak",
       ],
     },
-    grade: {
-      type: Number,
-      required: [true, "Sinf darajasi majburiy"],
-      min: 1,
-      max: 11,
-    },
-    section: {
-      type: String,
-      required: [true, "Sinf bo'limi majburiy"],
-      trim: true,
-      uppercase: true,
-      maxlength: [
-        1,
-        "Sinf bo'limi maksimal 1 ta belgidan iborat bo'lishi kerak",
-      ],
-    },
     isActive: {
       type: Boolean,
       default: true,

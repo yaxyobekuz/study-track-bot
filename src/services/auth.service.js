@@ -12,7 +12,7 @@ const authenticateStudent = async (username, password) => {
     // Find user
     const user = await User.findOne({ 
       username: username.toLowerCase().trim() 
-    }).populate("class", "name grade section");
+    }).populate("class", "name");
 
     if (!user) {
       return { success: false, error: "USER_NOT_FOUND" };
@@ -110,7 +110,7 @@ const getTgUser = async (telegramId) => {
         select: "firstName lastName fullName class",
         populate: {
           path: "class",
-          select: "name grade section"
+          select: "name"
         }
       });
     return tgUser;

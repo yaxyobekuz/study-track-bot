@@ -3,8 +3,8 @@ const { Grade, TgUser, User } = require("../models");
 
 /**
  * O'quvchining bugungi baholarini olish
- * @param {string} studentId 
- * @param {Date} date 
+ * @param {string} studentId
+ * @param {Date} date
  * @returns {Array}
  */
 const getStudentGradesByDate = async (studentId, date = new Date()) => {
@@ -18,7 +18,7 @@ const getStudentGradesByDate = async (studentId, date = new Date()) => {
 
     const grades = await Grade.find({
       student: studentId,
-      date: { $gte: startDate, $lte: endDate }
+      date: { $gte: startDate, $lte: endDate },
     })
       .populate("subject", "name")
       .populate("teacher", "firstName lastName")
@@ -39,19 +39,16 @@ const getActiveNotificationUsers = async () => {
   try {
     const tgUsers = await TgUser.find({
       isActive: true,
-      notificationsEnabled: true
+      notificationsEnabled: true,
     }).populate({
       path: "student",
       select: "firstName lastName fullName class isActive",
-      populate: {
-        path: "class",
-        select: "name grade section"
-      }
+      populate: { path: "class", select: "name" },
     });
 
     // Return only active students
-    return tgUsers.filter(tgUser => 
-      tgUser.student && tgUser.student.isActive
+    return tgUsers.filter(
+      (tgUser) => tgUser.student && tgUser.student.isActive
     );
   } catch (error) {
     console.error("Get active notification users error:", error);
@@ -61,20 +58,20 @@ const getActiveNotificationUsers = async () => {
 
 /**
  * Prepare daily report data
- * @param {Object} tgUser 
- * @param {Date} date 
+ * @param {Object} tgUser
+ * @param {Date} date
  * @returns {Object}
  */
 const prepareDailyReportData = async (tgUser, date = new Date()) => {
   try {
     const grades = await getStudentGradesByDate(tgUser.student._id, date);
-    
+
     return {
       tgUser,
       student: tgUser.student,
       grades,
       date,
-      hasGrades: grades.length > 0
+      hasGrades: grades.length > 0,
     };
   } catch (error) {
     console.error("Prepare daily report data error:", error);
@@ -84,8 +81,8 @@ const prepareDailyReportData = async (tgUser, date = new Date()) => {
 
 /**
  * Toggle notification settings
- * @param {string} telegramId 
- * @param {boolean} enabled 
+ * @param {string} telegramId
+ * @param {boolean} enabled
  * @returns {boolean}
  */
 const toggleNotifications = async (telegramId, enabled) => {
@@ -103,7 +100,7 @@ const toggleNotifications = async (telegramId, enabled) => {
 
 /**
  * Daily grades list for all students
- * @param {Date} date 
+ * @param {Date} date
  * @returns {Map<string, Array>}
  */
 const getAllStudentGradesForDate = async (date = new Date()) => {
@@ -115,7 +112,7 @@ const getAllStudentGradesForDate = async (date = new Date()) => {
     endDate.setHours(23, 59, 59, 999);
 
     const grades = await Grade.find({
-      date: { $gte: startDate, $lte: endDate }
+      date: { $gte: startDate, $lte: endDate },
     })
       .populate("subject", "name")
       .populate("student", "_id")
@@ -123,7 +120,7 @@ const getAllStudentGradesForDate = async (date = new Date()) => {
 
     // O'quvchi ID bo'yicha guruh
     const gradesByStudent = new Map();
-    
+
     for (const grade of grades) {
       const studentId = grade.student._id.toString();
       if (!gradesByStudent.has(studentId)) {
