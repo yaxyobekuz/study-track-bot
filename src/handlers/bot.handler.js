@@ -88,10 +88,10 @@ const handleStart = async (bot, msg) => {
   if (existingTgUser && existingTgUser.student) {
     const studentName = existingTgUser.student.fullName || 
       `${existingTgUser.student.firstName} ${existingTgUser.student.lastName || ""}`.trim();
-    const className = existingTgUser.student.class?.name || "Noma'lum";
+    const classNames = existingTgUser.student.classes?.map(c => c.name).join(", ") || "Noma'lum";
 
     await sendMessage(bot, chatId, 
-      `👋 Qaytib kelganingizdan xursandmiz!\n\n📚 O'quvchi: *${studentName}*\n🏫 Sinf: *${className}*`,
+      `👋 Qaytib kelganingizdan xursandmiz!\n\n📚 O'quvchi: *${studentName}*\n🏫 Sinflar: *${classNames}*`,
       getMainKeyboard()
     );
     return;
@@ -183,10 +183,10 @@ const handlePassword = async (bot, msg, password) => {
   // Successful link
   const student = authResult.user;
   const studentName = student.fullName || `${student.firstName} ${student.lastName || ""}`.trim();
-  const className = student.class?.name || "Noma'lum";
+  const classNames = student.classes?.map(c => c.name).join(", ") || "Noma'lum";
 
   await sendMessage(bot, chatId, 
-    TEXTS.AUTH_SUCCESS(studentName, className), 
+    TEXTS.AUTH_SUCCESS(studentName, classNames), 
     getMainKeyboard()
   );
   

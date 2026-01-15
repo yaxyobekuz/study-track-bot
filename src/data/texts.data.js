@@ -14,11 +14,11 @@ Davom etish uchun o'quvchining login va parolini kiriting.`,
   ENTER_USERNAME: "👤 O'quvchining login (username)ini kiriting:",
   ENTER_PASSWORD: "🔐 O'quvchining parolini kiriting:",
 
-  AUTH_SUCCESS: (studentName, className) =>
+  AUTH_SUCCESS: (studentName, classNames) =>
     `✅ Muvaffaqiyatli ro'yxatdan o'tdingiz!
 
 📚 O'quvchi: ${studentName}
-🏫 Sinf: ${className}
+🏫 Sinflar: ${classNames}
 
 Endi har kuni belgilangan vaqtda farzandingizning baholarini olasiz.`,
 

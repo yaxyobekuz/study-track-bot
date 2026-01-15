@@ -42,8 +42,8 @@ const getActiveNotificationUsers = async () => {
       notificationsEnabled: true,
     }).populate({
       path: "student",
-      select: "firstName lastName fullName class isActive",
-      populate: { path: "class", select: "name" },
+      select: "firstName lastName fullName classes isActive",
+      populate: { path: "classes", select: "name" },
     });
 
     // Return only active students

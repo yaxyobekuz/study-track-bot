@@ -3,16 +3,16 @@ const { User, TgUser } = require("../models");
 
 /**
  * Authenticate student with username and password
- * @param {string} username 
- * @param {string} password 
+ * @param {string} username
+ * @param {string} password
  * @returns {Object|null} - User yoki null
  */
 const authenticateStudent = async (username, password) => {
   try {
     // Find user
-    const user = await User.findOne({ 
-      username: username.toLowerCase().trim() 
-    }).populate("class", "name");
+    const user = await User.findOne({
+      username: username.toLowerCase().trim(),
+    }).populate("classes", "name");
 
     if (!user) {
       return { success: false, error: "USER_NOT_FOUND" };
@@ -86,7 +86,7 @@ const linkTelegramUser = async (telegramUser, student) => {
     // Add telegramId to User model (if not exists)
     if (!student.telegramIds.includes(telegramId)) {
       await User.findByIdAndUpdate(student._id, {
-        $addToSet: { telegramIds: telegramId }
+        $addToSet: { telegramIds: telegramId },
       });
     }
 
@@ -99,20 +99,21 @@ const linkTelegramUser = async (telegramUser, student) => {
 
 /**
  * Find Telegram user
- * @param {string} telegramId 
+ * @param {string} telegramId
  * @returns {Object|null}
  */
 const getTgUser = async (telegramId) => {
   try {
-    const tgUser = await TgUser.findOne({ telegramId: telegramId.toString() })
-      .populate({
-        path: "student",
-        select: "firstName lastName fullName class",
-        populate: {
-          path: "class",
-          select: "name"
-        }
-      });
+    const tgUser = await TgUser.findOne({
+      telegramId: telegramId.toString(),
+    }).populate({
+      path: "student",
+      select: "firstName lastName fullName classes",
+      populate: {
+        path: "classes",
+        select: "name",
+      },
+    });
     return tgUser;
   } catch (error) {
     console.error("Get TgUser error:", error);
@@ -122,20 +123,20 @@ const getTgUser = async (telegramId) => {
 
 /**
  * Unlink Telegram connection
- * @param {string} telegramId 
+ * @param {string} telegramId
  * @returns {boolean}
  */
 const unlinkTelegramUser = async (telegramId) => {
   try {
     const tgUser = await TgUser.findOne({ telegramId: telegramId.toString() });
-    
+
     if (!tgUser) {
       return false;
     }
 
     // Remove telegramId from User model
     await User.findByIdAndUpdate(tgUser.student, {
-      $pull: { telegramIds: telegramId.toString() }
+      $pull: { telegramIds: telegramId.toString() },
     });
 
     // Delete or deactivate TgUser
