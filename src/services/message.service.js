@@ -16,41 +16,95 @@ const formatDate = (date) => {
 
 /**
  * Kunlik hisobot xabarini tayyorlash
- * @param {Object} reportData 
+ * @param {Object} reportData
  * @returns {string}
  */
 const formatDailyReport = (reportData) => {
-  const { student, grades, date, hasGrades } = reportData;
+  const { student, grades, schedule, date, hasGrades, hasSchedule } = reportData;
   const studentName = student.fullName || `${student.firstName} ${student.lastName || ""}`.trim();
   const formattedDate = formatDate(date);
 
-  if (!hasGrades) {
+  // If no schedule and no grades
+  if (!hasGrades && !hasSchedule) {
     return TEXTS.NO_GRADES_TODAY(studentName, formattedDate);
   }
 
   let message = TEXTS.DAILY_REPORT_HEADER(studentName, formattedDate);
   message += "\n";
 
-  // Group grades by subject
-  const gradesBySubject = new Map();
-  for (const grade of grades) {
-    const subjectName = grade.subject.name;
-    if (!gradesBySubject.has(subjectName)) {
-      gradesBySubject.set(subjectName, []);
+  // If schedule exists, show all lessons from schedule
+  if (hasSchedule) {
+    // Create a map of grades by subject ID with arrays (for multiple grades per subject)
+    const gradesBySubjectId = new Map();
+    for (const grade of grades) {
+      const subjectId = grade.subject._id.toString();
+      if (!gradesBySubjectId.has(subjectId)) {
+        gradesBySubjectId.set(subjectId, []);
+      }
+      gradesBySubjectId.get(subjectId).push(grade);
     }
-    gradesBySubject.get(subjectName).push(grade);
-  }
 
-  // Display grades for each subject
-  for (const [subjectName, subjectGrades] of gradesBySubject) {
-    for (const gradeObj of subjectGrades) {
-      message += TEXTS.GRADE_LINE(subjectName, gradeObj.grade, gradeObj.comment) + "\n";
+    // Check if student is in multiple classes
+    const hasMultipleClasses = student.classes && student.classes.length > 1;
+
+    // Display all lessons from schedule
+    for (const lesson of schedule) {
+      const subjectId = lesson.subjectId.toString();
+      const subjectName = lesson.subjectName;
+      const className = lesson.className;
+      const order = lesson.order;
+
+      // Build lesson display name
+      let displayName = subjectName;
+
+      // Add class name if multiple classes
+      if (hasMultipleClasses) {
+        displayName = `${subjectName} (${className})`;
+      }
+
+      // Check if student has grades for this subject
+      if (gradesBySubjectId.has(subjectId) && gradesBySubjectId.get(subjectId).length > 0) {
+        // Get and remove first grade from the list (for this lesson)
+        const gradeObj = gradesBySubjectId.get(subjectId).shift();
+        message += TEXTS.GRADE_LINE(displayName, gradeObj.grade, gradeObj.comment) + "\n";
+      } else {
+        // No grade for this lesson
+        message += TEXTS.NO_GRADE_LINE(displayName) + "\n";
+      }
     }
-  }
 
-  // Average grade
-  const avgGrade = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
-  message += `\n📈 *O'rtacha baho:* ${avgGrade.toFixed(1)}`;
+    // Average grade (only from graded subjects)
+    if (hasGrades) {
+      const avgGrade = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
+      message += `\n📈 *O'rtacha baho:* ${avgGrade.toFixed(1)}`;
+    }
+  } else {
+    // Fallback: No schedule available, show only graded subjects
+    if (!hasGrades) {
+      return TEXTS.NO_GRADES_TODAY(studentName, formattedDate);
+    }
+
+    // Group grades by subject
+    const gradesBySubject = new Map();
+    for (const grade of grades) {
+      const subjectName = grade.subject.name;
+      if (!gradesBySubject.has(subjectName)) {
+        gradesBySubject.set(subjectName, []);
+      }
+      gradesBySubject.get(subjectName).push(grade);
+    }
+
+    // Display grades for each subject
+    for (const [subjectName, subjectGrades] of gradesBySubject) {
+      for (const gradeObj of subjectGrades) {
+        message += TEXTS.GRADE_LINE(subjectName, gradeObj.grade, gradeObj.comment) + "\n";
+      }
+    }
+
+    // Average grade
+    const avgGrade = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
+    message += `\n📈 *O'rtacha baho:* ${avgGrade.toFixed(1)}`;
+  }
 
   return message;
 };
