@@ -1,5 +1,6 @@
 // Grade service
 const { Grade, TgUser, User } = require("../models");
+const { getScheduleForStudent } = require("./schedule.service");
 
 /**
  * O'quvchining bugungi baholarini olish
@@ -65,13 +66,16 @@ const getActiveNotificationUsers = async () => {
 const prepareDailyReportData = async (tgUser, date = new Date()) => {
   try {
     const grades = await getStudentGradesByDate(tgUser.student._id, date);
+    const schedule = await getScheduleForStudent(tgUser.student, date);
 
     return {
       tgUser,
       student: tgUser.student,
       grades,
+      schedule,
       date,
       hasGrades: grades.length > 0,
+      hasSchedule: schedule.length > 0,
     };
   } catch (error) {
     console.error("Prepare daily report data error:", error);
