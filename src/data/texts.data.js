@@ -45,6 +45,8 @@ Endi har kuni belgilangan vaqtda farzandingizning baholarini olasiz.`,
     return line;
   },
 
+  NO_GRADE_LINE: (subjectName) => `❌ *${subjectName}*: Darsda qatnashmadi`,
+
   NO_GRADES_TODAY: (studentName, date) =>
     `📭 *Kunlik hisobot*\n\n👤 O'quvchi: *${studentName}*\n📅 Sana: *${date}*\n\n⚠️ Bugun o'quvchiga baho qo'yilmadi.\n\n_Bu o'quvchi bugun maktabga kelmagan bo'lishi mumkin yoki darslar o'tkazilmagan._`,
 
