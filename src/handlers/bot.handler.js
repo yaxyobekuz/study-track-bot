@@ -28,7 +28,7 @@ const getMainKeyboard = () => ({
   reply_markup: {
     keyboard: [
       [{ text: TEXTS.BTN_MY_GRADES }],
-      [{ text: TEXTS.BTN_SETTINGS }, { text: TEXTS.BTN_HELP }],
+      [{ text: TEXTS.BTN_SETTINGS }, { text: TEXTS.BTN_STATISTICS }],
     ],
     resize_keyboard: true,
   },
@@ -256,11 +256,21 @@ const handleSettings = async (bot, msg) => {
 };
 
 /**
- * Help handler
+ * Statistics handler
  */
-const handleHelp = async (bot, msg) => {
+const handleStatistics = async (bot, msg) => {
   const chatId = msg.chat.id;
-  await sendMessage(bot, chatId, TEXTS.HELP_TEXT, getMainKeyboard());
+  await bot.sendMessage(chatId, TEXTS.STATISTICS_TEXT, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [{
+          text: TEXTS.BTN_WEB_APP,
+          web_app: { url: "https://mbsi.studytrack.uz/" }
+        }],
+      ],
+    },
+  });
 };
 
 /**
@@ -368,8 +378,8 @@ const handleMessage = async (bot, msg) => {
     return;
   }
 
-  if (text === TEXTS.BTN_HELP) {
-    await handleHelp(bot, msg);
+  if (text === TEXTS.BTN_STATISTICS) {
+    await handleStatistics(bot, msg);
     return;
   }
 

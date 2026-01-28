@@ -53,8 +53,9 @@ Endi har kuni belgilangan vaqtda farzandingizning baholarini olasiz.`,
   // Tugmalar
   BTN_MY_GRADES: "📊 Bugungi baholar",
   BTN_SETTINGS: "⚙️ Sozlamalar",
-  BTN_HELP: "❓ Yordam",
+  BTN_STATISTICS: "📈 Statistika",
   BTN_UNLINK: "🔓 Bog'lanishni bekor qilish",
+  BTN_WEB_APP: "» Web Sahifani Ochish «",
 
   // Sozlamalar
   SETTINGS_MENU: `⚙️ *Sozlamalar*
@@ -65,18 +66,10 @@ Quyidagi sozlamalarni o'zgartirishingiz mumkin:`,
   NOTIFICATIONS_OFF: "❌ Bildirishnomalar o'chirilgan",
   TOGGLE_NOTIFICATIONS: "🔔 Bildirishnomalarni o'zgartirish",
 
-  // Yordam
-  HELP_TEXT: `❓ *Yordam*
+  // Statistika
+  STATISTICS_TEXT: `📈 *Statistika*
 
-Bu bot farzandingizning kunlik baholarini kuzatish uchun mo'ljallangan.
-
-*Asosiy xususiyatlar:*
-• Har kuni belgilangan vaqtda avtomatik baho hisoboti
-• Bugungi baholarni ko'rish imkoniyati
-• Bildirishnomalarni yoqish/o'chirish
-
-*Muammo bo'lsa:*
-Maktab ma'muriyatiga murojaat qiling.`,
+Siz o'quvchining haftalik statistikasini ko'rish uchun quyidagi tugmani ezishingiz mumkin. Platformaga kirish uchun o'quvchining login va parolini kiritish talab etiladi! 👇`,
 
   // Xatolar
   ERROR_GENERAL: "❌ Xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.",
