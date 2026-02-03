@@ -39,14 +39,13 @@ const formatDailyReport = (reportData) => {
     // Group lessons and grades by class
     const classesByName = new Map();
     
-    // Create a map of grades by subject ID
-    const gradesBySubjectId = new Map();
+    // Create a map of grades by subject ID and lessonOrder
+    const gradesByKey = new Map();
     for (const grade of grades) {
       const subjectId = grade.subject._id.toString();
-      if (!gradesBySubjectId.has(subjectId)) {
-        gradesBySubjectId.set(subjectId, []);
-      }
-      gradesBySubjectId.get(subjectId).push(grade);
+      const lessonOrder = grade.lessonOrder || 1;
+      const key = `${subjectId}_${lessonOrder}`;
+      gradesByKey.set(key, grade);
     }
 
     // Group schedule by class
@@ -65,10 +64,12 @@ const formatDailyReport = (reportData) => {
       for (const lesson of lessons) {
         const subjectId = lesson.subjectId.toString();
         const subjectName = lesson.subjectName;
+        const lessonOrder = lesson.order || 1;
+        const key = `${subjectId}_${lessonOrder}`;
 
-        // Check if student has grades for this subject
-        if (gradesBySubjectId.has(subjectId) && gradesBySubjectId.get(subjectId).length > 0) {
-          const gradeObj = gradesBySubjectId.get(subjectId).shift();
+        // Check if student has grades for this subject at this lessonOrder
+        if (gradesByKey.has(key)) {
+          const gradeObj = gradesByKey.get(key);
           message += TEXTS.GRADE_LINE(subjectName, gradeObj.grade, gradeObj.comment) + "\n";
         } else {
           message += TEXTS.NO_GRADE_LINE(subjectName) + "\n";
@@ -83,23 +84,24 @@ const formatDailyReport = (reportData) => {
     }
   } else if (hasSchedule) {
     // Single class - display without class grouping
-    const gradesBySubjectId = new Map();
+    const gradesByKey = new Map();
     for (const grade of grades) {
       const subjectId = grade.subject._id.toString();
-      if (!gradesBySubjectId.has(subjectId)) {
-        gradesBySubjectId.set(subjectId, []);
-      }
-      gradesBySubjectId.get(subjectId).push(grade);
+      const lessonOrder = grade.lessonOrder || 1;
+      const key = `${subjectId}_${lessonOrder}`;
+      gradesByKey.set(key, grade);
     }
 
     // Display all lessons from schedule
     for (const lesson of schedule) {
       const subjectId = lesson.subjectId.toString();
       const subjectName = lesson.subjectName;
+      const lessonOrder = lesson.order || 1;
+      const key = `${subjectId}_${lessonOrder}`;
 
-      // Check if student has grades for this subject
-      if (gradesBySubjectId.has(subjectId) && gradesBySubjectId.get(subjectId).length > 0) {
-        const gradeObj = gradesBySubjectId.get(subjectId).shift();
+      // Check if student has grades for this subject at this lessonOrder
+      if (gradesByKey.has(key)) {
+        const gradeObj = gradesByKey.get(key);
         message += TEXTS.GRADE_LINE(subjectName, gradeObj.grade, gradeObj.comment) + "\n";
       } else {
         message += TEXTS.NO_GRADE_LINE(subjectName) + "\n";
