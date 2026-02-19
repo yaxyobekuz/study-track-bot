@@ -266,7 +266,7 @@ const handleStatistics = async (bot, msg) => {
       inline_keyboard: [
         [{
           text: TEXTS.BTN_WEB_APP,
-          web_app: { url: "https://mbsi.studytrack.uz/" }
+          web_app: { url: process.env.DASHBOARD_URL }
         }],
       ],
     },
