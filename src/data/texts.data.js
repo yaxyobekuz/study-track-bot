@@ -86,6 +86,24 @@ Siz o'quvchining haftalik statistikasini ko'rish uchun quyidagi tugmani ezishing
   SENDING_REPORTS: "📤 Kunlik hisobotlar yuborilmoqda...",
   REPORTS_SENT: (sent, failed) =>
     `✅ Hisobotlar yuborildi.\n\nYuborildi: ${sent}\nXatolik: ${failed}`,
+
+  // Jarimalar
+  PENALTY_NOTIFICATION: (studentName, title, points, description, totalPoints) => {
+    let text = `⚠️ <b>Jarima xabarnomasi</b>\n\n`;
+    text += `👤 O'quvchi: <b>${studentName}</b>\n`;
+    text += `📋 Sabab: <b>${title}</b>\n`;
+    text += `🔴 Ball: <b>${points}</b>\n`;
+    if (description) {
+      text += `📝 Izoh: ${description}\n`;
+    }
+    text += `\n📊 Jami jarima bali: <b>${totalPoints}</b>`;
+    if (totalPoints >= 12) {
+      text += `\n\n🚫 <b>Diqqat!</b> Jarima bali 12 ga yetdi. Profil bloklandi.`;
+    } else if (totalPoints > 3) {
+      text += `\n\n⚠️ Do'kondan foydalanish cheklangan (jarima bali 3 dan yuqori).`;
+    }
+    return text;
+  },
 };
 
 module.exports = TEXTS;
