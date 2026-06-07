@@ -1,4 +1,4 @@
-# Claude Code — Bot Module Rules
+# Claude Code - Bot Module Rules
 
 > Global rules in root CLAUDE.md also apply.
 
