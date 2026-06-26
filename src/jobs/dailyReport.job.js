@@ -51,15 +51,29 @@ const sendDailyReportsJob = async () => {
     // Prepare report data for each user
     const today = new Date();
     const reportDataList = [];
+    let skippedNoLesson = 0;
 
     for (const tgUser of tgUsers) {
       const reportData = await prepareDailyReportData(tgUser, today);
-      if (reportData) {
-        reportDataList.push(reportData);
+      if (!reportData) {
+        continue;
       }
+
+      // Dars jadvaliga ko'ra bugun dars bo'lmasa (va baho ham qo'yilmagan bo'lsa),
+      // bu o'quvchi uchun hisobot yuborilmaydi.
+      // Masalan: shanba kuni ayrim sinflarda dars o'tkazilmaydi —
+      // bunday holatda "Darsda qatnashmadi" xabari yuborilmasligi kerak.
+      if (!reportData.hasSchedule && !reportData.hasGrades) {
+        skippedNoLesson++;
+        continue;
+      }
+
+      reportDataList.push(reportData);
     }
 
-    console.log(`📊 Prepared ${reportDataList.length} reports`);
+    console.log(
+      `📊 Prepared ${reportDataList.length} reports (skipped ${skippedNoLesson} - bugun dars yo'q)`
+    );
 
     // Send reports
     const results = await sendDailyReports(botInstance, reportDataList);
