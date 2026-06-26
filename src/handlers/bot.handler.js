@@ -8,7 +8,11 @@ const {
   getStudentGradesByDate,
   toggleNotifications 
 } = require("../services");
-const { formatDailyReport, sendMessage } = require("../services/message.service");
+const {
+  formatDailyReport,
+  sendMessage,
+  escapeMarkdown,
+} = require("../services/message.service");
 
 // Store user state (session)
 const userStates = new Map();
@@ -86,9 +90,13 @@ const handleStart = async (bot, msg) => {
   const existingTgUser = await getTgUser(telegramId);
 
   if (existingTgUser && existingTgUser.student) {
-    const studentName = existingTgUser.student.fullName || 
-      `${existingTgUser.student.firstName} ${existingTgUser.student.lastName || ""}`.trim();
-    const classNames = existingTgUser.student.classes?.map(c => c.name).join(", ") || "Noma'lum";
+    const studentName = escapeMarkdown(
+      existingTgUser.student.fullName ||
+        `${existingTgUser.student.firstName} ${existingTgUser.student.lastName || ""}`.trim()
+    );
+    const classNames = escapeMarkdown(
+      existingTgUser.student.classes?.map((c) => c.name).join(", ") || "Noma'lum"
+    );
 
     await sendMessage(bot, chatId, 
       `👋 Qaytib kelganingizdan xursandmiz!\n\n📚 O'quvchi: *${studentName}*\n🏫 Sinflar: *${classNames}*`,
@@ -142,55 +150,67 @@ const handlePassword = async (bot, msg, password) => {
     // Continue even if deletion fails
   }
 
-  // Authentication
-  const authResult = await authenticateStudent(username, password);
+  try {
+    // Authentication
+    const authResult = await authenticateStudent(username, password);
 
-  if (!authResult.success) {
-    let errorMessage = TEXTS.AUTH_FAILED;
-    
-    if (authResult.error === "NOT_STUDENT") {
-      errorMessage = TEXTS.AUTH_STUDENT_ONLY;
-    } else if (authResult.error === "INACTIVE_USER") {
-      errorMessage = TEXTS.AUTH_INACTIVE_USER;
+    if (!authResult.success) {
+      let errorMessage = TEXTS.AUTH_FAILED;
+
+      if (authResult.error === "NOT_STUDENT") {
+        errorMessage = TEXTS.AUTH_STUDENT_ONLY;
+      } else if (authResult.error === "INACTIVE_USER") {
+        errorMessage = TEXTS.AUTH_INACTIVE_USER;
+      }
+
+      await sendMessage(bot, chatId, errorMessage, getStartKeyboard());
+      return;
     }
 
-    await sendMessage(bot, chatId, errorMessage, getStartKeyboard());
-    clearUserState(chatId);
-    return;
-  }
+    // Link Telegram user
+    const telegramUser = {
+      id: msg.from.id,
+      chatId: chatId.toString(),
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name,
+      username: msg.from.username,
+    };
 
-  // Link Telegram user
-  const telegramUser = {
-    id: msg.from.id,
-    chatId: chatId.toString(),
-    first_name: msg.from.first_name,
-    last_name: msg.from.last_name,
-    username: msg.from.username,
-  };
+    const linkResult = await linkTelegramUser(telegramUser, authResult.user);
 
-  const linkResult = await linkTelegramUser(telegramUser, authResult.user);
-
-  if (!linkResult.success) {
-    if (linkResult.error === "ALREADY_LINKED") {
-      await sendMessage(bot, chatId, TEXTS.AUTH_ALREADY_LINKED, getMainKeyboard());
-    } else {
-      await sendMessage(bot, chatId, TEXTS.ERROR_GENERAL, getStartKeyboard());
+    if (!linkResult.success) {
+      if (linkResult.error === "ALREADY_LINKED") {
+        await sendMessage(bot, chatId, TEXTS.AUTH_ALREADY_LINKED, getMainKeyboard());
+      } else {
+        await sendMessage(bot, chatId, TEXTS.ERROR_GENERAL, getStartKeyboard());
+      }
+      return;
     }
+
+    // Successful link
+    // Foydalanuvchi ismi/sinf nomi Markdown'ni buzmasligi uchun escape qilamiz —
+    // aks holda AUTH_SUCCESS jimgina yuborilmay, bot "qotib qolgandek" ko'rinadi.
+    const student = authResult.user;
+    const studentName = escapeMarkdown(
+      student.fullName || `${student.firstName} ${student.lastName || ""}`.trim()
+    );
+    const classNames = escapeMarkdown(
+      student.classes?.map((c) => c.name).join(", ") || "Noma'lum"
+    );
+
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.AUTH_SUCCESS(studentName, classNames),
+      getMainKeyboard()
+    );
+  } catch (error) {
+    // Kutilmagan xato bo'lsa ham foydalanuvchi javobsiz qolmasligi kerak
+    console.error("Password handler error:", error);
+    await sendMessage(bot, chatId, TEXTS.ERROR_GENERAL, getStartKeyboard());
+  } finally {
     clearUserState(chatId);
-    return;
   }
-
-  // Successful link
-  const student = authResult.user;
-  const studentName = student.fullName || `${student.firstName} ${student.lastName || ""}`.trim();
-  const classNames = student.classes?.map(c => c.name).join(", ") || "Noma'lum";
-
-  await sendMessage(bot, chatId, 
-    TEXTS.AUTH_SUCCESS(studentName, classNames), 
-    getMainKeyboard()
-  );
-  
-  clearUserState(chatId);
 };
 
 /**
@@ -407,18 +427,27 @@ const handleMessage = async (bot, msg) => {
  * Register all handlers to bot
  */
 const registerHandlers = (bot) => {
+  // Ushlanmagan rejection jarayonni o'chirib yubormasligi uchun har bir
+  // handler xatosini shu yerda ushlaymiz (aks holda bot butunlay "qotib" qoladi).
+  const safe = (promise, label) =>
+    Promise.resolve(promise).catch((error) => {
+      console.error(`❌ ${label} error:`, error);
+    });
+
   // /start command
-  bot.onText(/\/start/, (msg) => handleStart(bot, msg));
+  bot.onText(/\/start/, (msg) => safe(handleStart(bot, msg), "Start handler"));
 
   // All messages
   bot.on("message", (msg) => {
     if (msg.text && !msg.text.startsWith("/")) {
-      handleMessage(bot, msg);
+      safe(handleMessage(bot, msg), "Message handler");
     }
   });
 
   // Callback queries
-  bot.on("callback_query", (query) => handleCallbackQuery(bot, query));
+  bot.on("callback_query", (query) =>
+    safe(handleCallbackQuery(bot, query), "Callback handler")
+  );
 
   console.log("📝 Bot handlers registered");
 };

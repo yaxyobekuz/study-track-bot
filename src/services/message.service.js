@@ -4,7 +4,7 @@ const TEXTS = require("../data/texts.data");
 
 /**
  * Vaqtni formatlash
- * @param {Date} date 
+ * @param {Date} date
  * @returns {string}
  */
 const formatDate = (date) => {
@@ -13,6 +13,16 @@ const formatDate = (date) => {
   const year = date.getFullYear();
   return `${day}.${month}.${year}`;
 };
+
+/**
+ * Markdown maxsus belgilaridan himoya qilish.
+ * Foydalanuvchi ismi/sinf nomida `_ * [ \`` bo'lsa, Telegram parse_mode: "Markdown"
+ * butun xabarni rad etadi va xabar jimgina yuborilmay qoladi. Shu sababli
+ * dinamik qiymatlarni xabarga qo'yishdan oldin escape qilamiz.
+ * @param {string} text
+ * @returns {string}
+ */
+const escapeMarkdown = (text = "") => String(text).replace(/([_*`[])/g, "\\$1");
 
 /**
  * Kunlik hisobot xabarini tayyorlash
@@ -241,6 +251,7 @@ const sendDailyReports = async (bot, reportDataList) => {
 
 module.exports = {
   formatDate,
+  escapeMarkdown,
   formatDailyReport,
   sendMessage,
   sendBatchMessages,
