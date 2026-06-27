@@ -61,7 +61,7 @@ const sendDailyReportsJob = async () => {
 
       // Dars jadvaliga ko'ra bugun dars bo'lmasa (va baho ham qo'yilmagan bo'lsa),
       // bu o'quvchi uchun hisobot yuborilmaydi.
-      // Masalan: shanba kuni ayrim sinflarda dars o'tkazilmaydi —
+      // Masalan: shanba kuni ayrim sinflarda dars o'tkazilmaydi -
       // bunday holatda "Darsda qatnashmadi" xabari yuborilmasligi kerak.
       if (!reportData.hasSchedule && !reportData.hasGrades) {
         skippedNoLesson++;

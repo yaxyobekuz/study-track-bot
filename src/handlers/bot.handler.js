@@ -188,7 +188,7 @@ const handlePassword = async (bot, msg, password) => {
     }
 
     // Successful link
-    // Foydalanuvchi ismi/sinf nomi Markdown'ni buzmasligi uchun escape qilamiz —
+    // Foydalanuvchi ismi/sinf nomi Markdown'ni buzmasligi uchun escape qilamiz -
     // aks holda AUTH_SUCCESS jimgina yuborilmay, bot "qotib qolgandek" ko'rinadi.
     const student = authResult.user;
     const studentName = escapeMarkdown(
