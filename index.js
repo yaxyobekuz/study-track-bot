@@ -5,11 +5,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const { config, validateConfig } = require("./src/config");
 const connectDB = require("./src/config/database");
 const { registerHandlers } = require("./src/handlers");
-const {
-  setBotInstance,
-  startScheduler,
-  startAgendaScheduler,
-} = require("./src/jobs");
+const { setBotInstance, startScheduler } = require("./src/jobs");
 
 // Validate configuration
 try {
@@ -34,7 +30,7 @@ bot.on("error", (error) => {
 // Main startup function
 const start = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to PostgreSQL (Prisma)
     await connectDB();
 
     // Set bot instance for jobs
@@ -43,21 +39,8 @@ const start = async () => {
     // Register handlers
     registerHandlers(bot);
 
-    // Start scheduler
-    // Agenda for production, simple scheduler for development
-    if (config.nodeEnv === "production") {
-      try {
-        await startAgendaScheduler();
-      } catch (error) {
-        console.error(
-          "❌ Agenda scheduler error, using simple scheduler:",
-          error.message
-        );
-        startScheduler();
-      }
-    } else {
-      startScheduler();
-    }
+    // Start scheduler (node-cron — server bilan bir xil, MongoDB-backed Agenda o'chirildi)
+    startScheduler();
 
     console.log("🤖 Bot started successfully!");
     console.log(`📅 Daily reports will be sent at ${config.dailyReportTime}`);
