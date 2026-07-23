@@ -2,3 +2,5 @@
 node_modules
 scripts
 package-lock.json
+# Prisma Client (generatsiya artifakti — `prisma generate` qayta yaratadi)
+src/generated
