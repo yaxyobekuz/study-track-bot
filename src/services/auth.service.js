@@ -5,10 +5,10 @@ const prisma = require("../config/prisma");
 // classes junction → eski [{_id,name}] shakliga tekislaydi
 function flattenClasses(user) {
   if (!user) return user;
-  const out = { ...user, id: user.id };
+  const out = { ...user };
   if (Array.isArray(user.classes)) {
     out.classes = user.classes.map((uc) =>
-      uc.class ? { ...uc.class, id: uc.class.id } : uc,
+      uc.class ? { ...uc.class } : uc,
     );
   }
   return out;
@@ -112,7 +112,7 @@ const linkTelegramUser = async (telegramUser, student) => {
       });
     }
 
-    return { success: true, tgUser: { ...tgUser, id: tgUser.id } };
+    return { success: true, tgUser: { ...tgUser } };
   } catch (error) {
     console.error("Link telegram user error:", error);
     return { success: false, error: "SERVER_ERROR" };
@@ -144,7 +144,6 @@ const getTgUser = async (telegramId) => {
 
     return {
       ...tgUser,
-      id: tgUser.id,
       student: student ? flattenClasses(student) : null,
     };
   } catch (error) {
