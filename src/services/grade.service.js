@@ -16,12 +16,12 @@ async function attachGradeRefs(grades) {
       ? prisma.user.findMany({ where: { id: { in: teacherIds } }, select: { id: true, firstName: true, lastName: true } })
       : [],
   ]);
-  const sMap = new Map(subjects.map((s) => [s.id, { ...s, _id: s.id }]));
-  const tMap = new Map(teachers.map((t) => [t.id, { ...t, _id: t.id }]));
+  const sMap = new Map(subjects.map((s) => [s.id, { ...s, id: s.id }]));
+  const tMap = new Map(teachers.map((t) => [t.id, { ...t, id: t.id }]));
 
   return arr.map((g) => ({
     ...g,
-    _id: g.id,
+    id: g.id,
     subject: g.subjectId ? sMap.get(g.subjectId) || null : null,
     teacher: g.teacherId ? tMap.get(g.teacherId) || null : null,
   }));
@@ -75,13 +75,13 @@ const getActiveNotificationUsers = async () => {
     const sMap = new Map(
       students.map((s) => [
         s.id,
-        { ...s, _id: s.id, classes: s.classes.map((uc) => ({ ...uc.class, _id: uc.class.id })) },
+        { ...s, id: s.id, classes: s.classes.map((uc) => ({ ...uc.class, id: uc.class.id })) },
       ]),
     );
 
     // Return only active students
     return tgUsers
-      .map((tgUser) => ({ ...tgUser, _id: tgUser.id, student: sMap.get(tgUser.student) || null }))
+      .map((tgUser) => ({ ...tgUser, id: tgUser.id, student: sMap.get(tgUser.student) || null }))
       .filter((tgUser) => tgUser.student && tgUser.student.isActive);
   } catch (error) {
     console.error("Get active notification users error:", error);
@@ -97,7 +97,7 @@ const getActiveNotificationUsers = async () => {
  */
 const prepareDailyReportData = async (tgUser, date = new Date()) => {
   try {
-    const grades = await getStudentGradesByDate(tgUser.student._id, date);
+    const grades = await getStudentGradesByDate(tgUser.student.id, date);
     const schedule = await getScheduleForStudent(tgUser.student, date);
 
     return {

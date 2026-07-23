@@ -5,10 +5,10 @@ const prisma = require("../config/prisma");
 // classes junction → eski [{_id,name}] shakliga tekislaydi
 function flattenClasses(user) {
   if (!user) return user;
-  const out = { ...user, _id: user.id };
+  const out = { ...user, id: user.id };
   if (Array.isArray(user.classes)) {
     out.classes = user.classes.map((uc) =>
-      uc.class ? { ...uc.class, _id: uc.class.id } : uc,
+      uc.class ? { ...uc.class, id: uc.class.id } : uc,
     );
   }
   return out;
@@ -64,7 +64,7 @@ const linkTelegramUser = async (telegramUser, student) => {
   try {
     const telegramId = telegramUser.id.toString();
     const chatId = telegramUser.chatId || telegramId;
-    const studentId = student.id || student._id;
+    const studentId = student.id;
 
     // If TgUser already exists
     let tgUser = await prisma.tgUser.findUnique({ where: { telegramId } });
@@ -112,7 +112,7 @@ const linkTelegramUser = async (telegramUser, student) => {
       });
     }
 
-    return { success: true, tgUser: { ...tgUser, _id: tgUser.id } };
+    return { success: true, tgUser: { ...tgUser, id: tgUser.id } };
   } catch (error) {
     console.error("Link telegram user error:", error);
     return { success: false, error: "SERVER_ERROR" };
@@ -144,7 +144,7 @@ const getTgUser = async (telegramId) => {
 
     return {
       ...tgUser,
-      _id: tgUser.id,
+      id: tgUser.id,
       student: student ? flattenClasses(student) : null,
     };
   } catch (error) {

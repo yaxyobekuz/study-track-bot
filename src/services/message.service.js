@@ -52,7 +52,7 @@ const formatDailyReport = (reportData) => {
     // Create a map of grades by subject ID and lessonOrder
     const gradesByKey = new Map();
     for (const grade of grades) {
-      const subjectId = grade.subject._id.toString();
+      const subjectId = grade.subject.id.toString();
       const lessonOrder = grade.lessonOrder || 1;
       const key = `${subjectId}_${lessonOrder}`;
       gradesByKey.set(key, grade);
@@ -96,7 +96,7 @@ const formatDailyReport = (reportData) => {
     // Single class - display without class grouping
     const gradesByKey = new Map();
     for (const grade of grades) {
-      const subjectId = grade.subject._id.toString();
+      const subjectId = grade.subject.id.toString();
       const lessonOrder = grade.lessonOrder || 1;
       const key = `${subjectId}_${lessonOrder}`;
       gradesByKey.set(key, grade);

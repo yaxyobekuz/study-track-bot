@@ -87,7 +87,7 @@ const getScheduleForStudent = async (student, date = new Date()) => {
     const allLessons = [];
 
     for (const classItem of student.classes) {
-      const classId = classItem._id || classItem.id || classItem;
+      const classId = classItem.id || classItem;
       const className = classItem.name || "Sinf";
 
       const classSchedule = await getScheduleForClass(classId, className, date);
