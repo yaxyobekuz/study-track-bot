@@ -1,12 +1,11 @@
-const mongoose = require("mongoose");
-const { config } = require("./index");
+const prisma = require("./prisma");
 
 const connectDB = async () => {
   try {
-    const db = await mongoose.connect(config.mongodbUri);
-    console.log(`✅ MongoDB connected: ${db.connection.host}`);
+    await prisma.$connect();
+    console.log("✅ PostgreSQL (Prisma) connected");
   } catch (error) {
-    console.error(`❌ MongoDB connection error: ${error.message}`);
+    console.error(`❌ PostgreSQL connection error: ${error.message}`);
     process.exit(1);
   }
 };

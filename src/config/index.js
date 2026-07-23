@@ -5,8 +5,8 @@ const config = {
   // Telegram bot token
   botToken: process.env.BOT_TOKEN,
   
-  // MongoDB
-  mongodbUri: process.env.MONGODB_URI || "mongodb://localhost:27017/study-tracker",
+  // PostgreSQL (Prisma) — server bilan bir xil baza
+  databaseUrl: process.env.DATABASE_URL,
   
   // Daily report sending time (HH:MM format)
   dailyReportTime: process.env.DAILY_REPORT_TIME || "18:00",
