@@ -1,11 +1,12 @@
 // Scheduled job - send daily reports
+const cron = require("node-cron");
 const { config } = require("../config");
 const {
   getActiveNotificationUsers,
   prepareDailyReportData,
   sendDailyReports,
 } = require("../services");
-const Holiday = require("../models/holiday.model");
+const { isHoliday } = require("../services/holiday.service");
 
 // Bot instance global variable
 let botInstance = null;
@@ -31,7 +32,7 @@ const sendDailyReportsJob = async () => {
 
   try {
     // Holiday check
-    const holidayCheck = await Holiday.isHoliday(new Date());
+    const holidayCheck = await isHoliday(new Date());
     if (holidayCheck.isHoliday) {
       console.log(
         `🎉 Bugun dam olish kuni: ${holidayCheck.holiday.name}. Hisobotlar yuborilmaydi.`
@@ -86,89 +87,28 @@ const sendDailyReportsJob = async () => {
 };
 
 /**
- * Start scheduler
- * Use simple setInterval and setTimeout instead of node-cron
+ * Start scheduler — node-cron (server bilan bir xil mexanizm).
+ * Har kuni belgilangan vaqtda (Dushanba-Shanba, yakshanba emas) hisobot yuboradi.
  */
 const startScheduler = () => {
   const [hours, minutes] = config.dailyReportTime.split(":").map(Number);
 
-  console.log(
-    `⏰ Scheduler started. Daily reports will be sent at ${config.dailyReportTime}`
-  );
-
-  // Check every minute
-  const checkAndRun = () => {
-    const now = new Date();
-
-    // Simple timezone handling
-    if (now.getHours() === hours && now.getMinutes() === minutes) {
-      // Check for Sunday (0 = Sunday)
-      if (now.getDay() === 0) {
-        console.log("ℹ️ Sunday - skipping daily reports");
-      } else {
-        sendDailyReportsJob();
-      }
-    }
-  };
-
-  // Check every minute
-  setInterval(checkAndRun, 60 * 1000);
-
-  // First check
-  const now = new Date();
-  console.log(`📅 Current time: ${now.getHours()}:${now.getMinutes()}`);
-  console.log(`📅 Next report time: ${hours}:${minutes}`);
-};
-
-/**
- * Scheduler with Agenda (for production)
- * Can be added if Agenda is needed
- */
-const startAgendaScheduler = async () => {
-  const Agenda = require("agenda");
-
-  const agenda = new Agenda({
-    db: { address: config.mongodbUri, collection: "scheduledJobs" },
-  });
-
-  // Job ni aniqlash
-  agenda.define("send daily reports", async (job) => {
-    console.log("📅 Agenda: Running daily reports job");
-    await sendDailyReportsJob();
-  });
-
-  // Xatolarni ushlash
-  agenda.on("fail", (err, job) => {
-    console.error(`❌ Agenda job failed: ${job.attrs.name}`, err);
-  });
-
-  await agenda.start();
-
-  // Kunlik hisobot yuborish jobini rejalashtirish
-  const [hours, minutes] = config.dailyReportTime.split(":").map(Number);
-
-  // Mavjud joblarni o'chirish va yangisini yaratish
-  await agenda.cancel({ name: "send daily reports" });
-
-  // Har kuni belgilangan vaqtda ishga tushirish
-  // Cron format: sekund daqiqa soat kun oy hafta_kuni
-  await agenda.every(
-    `${minutes} ${hours} * * 1-6`, // Dushanba-Shanba, yakshanba emas
-    "send daily reports",
-    {},
+  // Cron: daqiqa soat * * 1-6 (Dushanba-Shanba), timezone bilan
+  cron.schedule(
+    `${minutes} ${hours} * * 1-6`,
+    () => {
+      sendDailyReportsJob();
+    },
     { timezone: config.timezone }
   );
 
   console.log(
-    `⏰ Agenda scheduler started. Daily reports at ${config.dailyReportTime}`
+    `⏰ Scheduler started (node-cron). Daily reports at ${config.dailyReportTime} (${config.timezone}), Mon-Sat`
   );
-
-  return agenda;
 };
 
 module.exports = {
   startScheduler,
   setBotInstance,
   sendDailyReportsJob,
-  startAgendaScheduler,
 };
