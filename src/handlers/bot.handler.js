@@ -227,7 +227,7 @@ const handleMyGrades = async (bot, msg) => {
     return;
   }
 
-  const grades = await getStudentGradesByDate(tgUser.student._id, new Date());
+  const grades = await getStudentGradesByDate(tgUser.student.id, new Date());
   
   const reportData = {
     student: tgUser.student,
