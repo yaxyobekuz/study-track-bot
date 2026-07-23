@@ -1,5 +1,5 @@
-// Schedule service
-const { Schedule } = require("../models");
+// Schedule service (Prisma)
+const prisma = require("../config/prisma");
 
 /**
  * Get day name in Uzbek
@@ -21,7 +21,7 @@ const getDayNameInUzbek = (date = new Date()) => {
 
 /**
  * Get today's schedule for a student's class
- * @param {string} classId - Class ObjectId
+ * @param {string} classId - Class ID
  * @param {string} className - Class name
  * @param {Date} date - Date to get schedule for
  * @returns {Array} - Array of subjects with their details
@@ -35,24 +35,33 @@ const getScheduleForClass = async (classId, className, date = new Date()) => {
       return [];
     }
 
-    const schedule = await Schedule.findOne({
-      class: classId,
-      day: dayName,
-    }).populate("subjects.subject", "name");
+    const schedule = await prisma.schedule.findUnique({
+      where: { classId_day: { classId, day: dayName } },
+      include: { lessons: { orderBy: { position: "asc" } } },
+    });
 
-    if (!schedule || !schedule.subjects) {
+    if (!schedule || !schedule.lessons || schedule.lessons.length === 0) {
       return [];
     }
 
+    // subjectId — scalar (relation yo'q), fan nomlarini qo'lda yuklaymiz
+    const subjectIds = [...new Set(schedule.lessons.map((l) => l.subjectId).filter(Boolean))];
+    const subjects = await prisma.subject.findMany({
+      where: { id: { in: subjectIds } },
+      select: { id: true, name: true },
+    });
+    const subjMap = new Map(subjects.map((s) => [s.id, s]));
+
     // Sort by order and return subjects with detailed info
-    return schedule.subjects
+    return schedule.lessons
+      .slice()
       .sort((a, b) => a.order - b.order)
       .map((item) => ({
-        lessonId: `${classId}_${item.subject._id}_${item.order}`, // Unique identifier
-        classId: classId,
-        className: className,
-        subjectId: item.subject._id,
-        subjectName: item.subject.name,
+        lessonId: `${classId}_${item.subjectId}_${item.order}`, // Unique identifier
+        classId,
+        className,
+        subjectId: item.subjectId,
+        subjectName: subjMap.get(item.subjectId)?.name || "",
         order: item.order,
       }));
   } catch (error) {
@@ -78,7 +87,7 @@ const getScheduleForStudent = async (student, date = new Date()) => {
     const allLessons = [];
 
     for (const classItem of student.classes) {
-      const classId = classItem._id || classItem;
+      const classId = classItem._id || classItem.id || classItem;
       const className = classItem.name || "Sinf";
 
       const classSchedule = await getScheduleForClass(classId, className, date);

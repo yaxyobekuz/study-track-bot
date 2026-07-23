@@ -1,5 +1,18 @@
-// Authentication service
-const { User, TgUser } = require("../models");
+// Authentication service (Prisma)
+const bcrypt = require("bcrypt");
+const prisma = require("../config/prisma");
+
+// classes junction → eski [{_id,name}] shakliga tekislaydi
+function flattenClasses(user) {
+  if (!user) return user;
+  const out = { ...user, _id: user.id };
+  if (Array.isArray(user.classes)) {
+    out.classes = user.classes.map((uc) =>
+      uc.class ? { ...uc.class, _id: uc.class.id } : uc,
+    );
+  }
+  return out;
+}
 
 /**
  * Authenticate student with username and password
@@ -9,17 +22,17 @@ const { User, TgUser } = require("../models");
  */
 const authenticateStudent = async (username, password) => {
   try {
-    // Find user
-    const user = await User.findOne({
-      username: username.toLowerCase().trim(),
-    }).populate("classes", "name");
+    const user = await prisma.user.findUnique({
+      where: { username: username.toLowerCase().trim() },
+      include: { classes: { include: { class: { select: { id: true, name: true } } } } },
+    });
 
     if (!user) {
       return { success: false, error: "USER_NOT_FOUND" };
     }
 
     // Check password
-    const isMatch = await user.matchPassword(password);
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return { success: false, error: "INVALID_PASSWORD" };
     }
@@ -34,7 +47,7 @@ const authenticateStudent = async (username, password) => {
       return { success: false, error: "INACTIVE_USER" };
     }
 
-    return { success: true, user };
+    return { success: true, user: flattenClasses(user) };
   } catch (error) {
     console.error("Authentication error:", error);
     return { success: false, error: "SERVER_ERROR" };
@@ -44,53 +57,62 @@ const authenticateStudent = async (username, password) => {
 /**
  * Link Telegram user to student
  * @param {Object} telegramUser - Telegram user data
- * @param {Object} student - Student (User model)
+ * @param {Object} student - Student (User)
  * @returns {Object}
  */
 const linkTelegramUser = async (telegramUser, student) => {
   try {
     const telegramId = telegramUser.id.toString();
     const chatId = telegramUser.chatId || telegramId;
+    const studentId = student.id || student._id;
 
     // If TgUser already exists
-    let tgUser = await TgUser.findOne({ telegramId });
+    let tgUser = await prisma.tgUser.findUnique({ where: { telegramId } });
 
     if (tgUser) {
       // Is it linked to the same student?
-      if (tgUser.student.toString() === student._id.toString()) {
+      if (String(tgUser.student) === String(studentId)) {
         return { success: false, error: "ALREADY_LINKED" };
       }
 
       // If linked to another student, update
-      tgUser.student = student._id;
-      tgUser.firstName = telegramUser.first_name;
-      tgUser.lastName = telegramUser.last_name;
-      tgUser.username = telegramUser.username;
-      tgUser.chatId = chatId;
-      tgUser.isActive = true;
-      tgUser.notificationsEnabled = true;
-      tgUser.lastActivity = new Date();
-      await tgUser.save();
+      tgUser = await prisma.tgUser.update({
+        where: { telegramId },
+        data: {
+          student: studentId,
+          firstName: telegramUser.first_name,
+          lastName: telegramUser.last_name,
+          username: telegramUser.username,
+          chatId,
+          isActive: true,
+          notificationsEnabled: true,
+          lastActivity: new Date(),
+        },
+      });
     } else {
       // Create new TgUser
-      tgUser = await TgUser.create({
-        telegramId,
-        chatId,
-        student: student._id,
-        firstName: telegramUser.first_name,
-        lastName: telegramUser.last_name,
-        username: telegramUser.username,
+      tgUser = await prisma.tgUser.create({
+        data: {
+          telegramId,
+          chatId,
+          student: studentId,
+          firstName: telegramUser.first_name,
+          lastName: telegramUser.last_name,
+          username: telegramUser.username,
+        },
       });
     }
 
     // Add telegramId to User model (if not exists)
-    if (!student.telegramIds.includes(telegramId)) {
-      await User.findByIdAndUpdate(student._id, {
-        $addToSet: { telegramIds: telegramId },
+    const telegramIds = student.telegramIds || [];
+    if (!telegramIds.includes(telegramId)) {
+      await prisma.user.update({
+        where: { id: studentId },
+        data: { telegramIds: { push: telegramId } },
       });
     }
 
-    return { success: true, tgUser };
+    return { success: true, tgUser: { ...tgUser, _id: tgUser.id } };
   } catch (error) {
     console.error("Link telegram user error:", error);
     return { success: false, error: "SERVER_ERROR" };
@@ -104,17 +126,27 @@ const linkTelegramUser = async (telegramUser, student) => {
  */
 const getTgUser = async (telegramId) => {
   try {
-    const tgUser = await TgUser.findOne({
-      telegramId: telegramId.toString(),
-    }).populate({
-      path: "student",
-      select: "firstName lastName fullName classes",
-      populate: {
-        path: "classes",
-        select: "name",
+    const tgUser = await prisma.tgUser.findUnique({
+      where: { telegramId: telegramId.toString() },
+    });
+    if (!tgUser) return null;
+
+    // student — scalar String (relation yo'q), qo'lda yuklaymiz
+    const student = await prisma.user.findUnique({
+      where: { id: tgUser.student },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        classes: { include: { class: { select: { id: true, name: true } } } },
       },
     });
-    return tgUser;
+
+    return {
+      ...tgUser,
+      _id: tgUser.id,
+      student: student ? flattenClasses(student) : null,
+    };
   } catch (error) {
     console.error("Get TgUser error:", error);
     return null;
@@ -128,19 +160,27 @@ const getTgUser = async (telegramId) => {
  */
 const unlinkTelegramUser = async (telegramId) => {
   try {
-    const tgUser = await TgUser.findOne({ telegramId: telegramId.toString() });
+    const tid = telegramId.toString();
+    const tgUser = await prisma.tgUser.findUnique({ where: { telegramId: tid } });
 
     if (!tgUser) {
       return false;
     }
 
     // Remove telegramId from User model
-    await User.findByIdAndUpdate(tgUser.student, {
-      $pull: { telegramIds: telegramId.toString() },
+    const student = await prisma.user.findUnique({
+      where: { id: tgUser.student },
+      select: { telegramIds: true },
     });
+    if (student) {
+      await prisma.user.update({
+        where: { id: tgUser.student },
+        data: { telegramIds: student.telegramIds.filter((t) => t !== tid) },
+      });
+    }
 
-    // Delete or deactivate TgUser
-    await TgUser.findByIdAndDelete(tgUser._id);
+    // Delete TgUser
+    await prisma.tgUser.delete({ where: { id: tgUser.id } });
 
     return true;
   } catch (error) {

@@ -1,6 +1,31 @@
-// Grade service
-const { Grade, TgUser, User } = require("../models");
+// Grade service (Prisma)
+const prisma = require("../config/prisma");
 const { getScheduleForStudent } = require("./schedule.service");
+
+// Grade ref (subject/teacher) larni qo'lda yuklab tekislaydi (relation YO'Q)
+async function attachGradeRefs(grades) {
+  const arr = Array.isArray(grades) ? grades : [grades];
+  const subjectIds = [...new Set(arr.map((g) => g.subjectId).filter(Boolean))];
+  const teacherIds = [...new Set(arr.map((g) => g.teacherId).filter(Boolean))];
+
+  const [subjects, teachers] = await Promise.all([
+    subjectIds.length
+      ? prisma.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true } })
+      : [],
+    teacherIds.length
+      ? prisma.user.findMany({ where: { id: { in: teacherIds } }, select: { id: true, firstName: true, lastName: true } })
+      : [],
+  ]);
+  const sMap = new Map(subjects.map((s) => [s.id, { ...s, _id: s.id }]));
+  const tMap = new Map(teachers.map((t) => [t.id, { ...t, _id: t.id }]));
+
+  return arr.map((g) => ({
+    ...g,
+    _id: g.id,
+    subject: g.subjectId ? sMap.get(g.subjectId) || null : null,
+    teacher: g.teacherId ? tMap.get(g.teacherId) || null : null,
+  }));
+}
 
 /**
  * O'quvchining bugungi baholarini olish
@@ -10,22 +35,18 @@ const { getScheduleForStudent } = require("./schedule.service");
  */
 const getStudentGradesByDate = async (studentId, date = new Date()) => {
   try {
-    // Get date from start to end of day
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);
 
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
-    const grades = await Grade.find({
-      student: studentId,
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("subject", "name")
-      .populate("teacher", "firstName lastName")
-      .sort({ createdAt: 1 });
+    const grades = await prisma.grade.findMany({
+      where: { studentId, date: { gte: startDate, lte: endDate } },
+      orderBy: { createdAt: "asc" },
+    });
 
-    return grades;
+    return attachGradeRefs(grades);
   } catch (error) {
     console.error("Get student grades error:", error);
     return [];
@@ -38,19 +59,30 @@ const getStudentGradesByDate = async (studentId, date = new Date()) => {
  */
 const getActiveNotificationUsers = async () => {
   try {
-    const tgUsers = await TgUser.find({
-      isActive: true,
-      notificationsEnabled: true,
-    }).populate({
-      path: "student",
-      select: "firstName lastName fullName classes isActive",
-      populate: { path: "classes", select: "name" },
+    const tgUsers = await prisma.tgUser.findMany({
+      where: { isActive: true, notificationsEnabled: true },
     });
 
-    // Return only active students
-    return tgUsers.filter(
-      (tgUser) => tgUser.student && tgUser.student.isActive
+    // student — scalar String (relation yo'q), qo'lda yuklaymiz
+    const studentIds = [...new Set(tgUsers.map((t) => t.student).filter(Boolean))];
+    const students = await prisma.user.findMany({
+      where: { id: { in: studentIds } },
+      select: {
+        id: true, firstName: true, lastName: true, isActive: true,
+        classes: { include: { class: { select: { id: true, name: true } } } },
+      },
+    });
+    const sMap = new Map(
+      students.map((s) => [
+        s.id,
+        { ...s, _id: s.id, classes: s.classes.map((uc) => ({ ...uc.class, _id: uc.class.id })) },
+      ]),
     );
+
+    // Return only active students
+    return tgUsers
+      .map((tgUser) => ({ ...tgUser, _id: tgUser.id, student: sMap.get(tgUser.student) || null }))
+      .filter((tgUser) => tgUser.student && tgUser.student.isActive);
   } catch (error) {
     console.error("Get active notification users error:", error);
     return [];
@@ -91,10 +123,10 @@ const prepareDailyReportData = async (tgUser, date = new Date()) => {
  */
 const toggleNotifications = async (telegramId, enabled) => {
   try {
-    await TgUser.findOneAndUpdate(
-      { telegramId: telegramId.toString() },
-      { notificationsEnabled: enabled }
-    );
+    await prisma.tgUser.updateMany({
+      where: { telegramId: telegramId.toString() },
+      data: { notificationsEnabled: enabled },
+    });
     return true;
   } catch (error) {
     console.error("Toggle notifications error:", error);
@@ -115,18 +147,17 @@ const getAllStudentGradesForDate = async (date = new Date()) => {
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
-    const grades = await Grade.find({
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("subject", "name")
-      .populate("student", "_id")
-      .sort({ createdAt: 1 });
+    const rawGrades = await prisma.grade.findMany({
+      where: { date: { gte: startDate, lte: endDate } },
+      orderBy: { createdAt: "asc" },
+    });
+    const grades = await attachGradeRefs(rawGrades);
 
     // O'quvchi ID bo'yicha guruh
     const gradesByStudent = new Map();
 
     for (const grade of grades) {
-      const studentId = grade.student._id.toString();
+      const studentId = String(grade.studentId);
       if (!gradesByStudent.has(studentId)) {
         gradesByStudent.set(studentId, []);
       }
