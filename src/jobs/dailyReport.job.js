@@ -7,6 +7,8 @@ const {
   sendDailyReports,
 } = require("../services");
 const { isHoliday } = require("../services/holiday.service");
+const { forEachBranch } = require("../config/branch");
+
 
 // Bot instance global variable
 let botInstance = null;
@@ -20,32 +22,34 @@ const setBotInstance = (bot) => {
 };
 
 /**
- * Daily report sending task
+ * BITTA FILIAL uchun kunlik hisobot.
+ *
+ * Dam olish kunlari, dars jadvali va o'quvchilar — hammasi filialga xos,
+ * shuning uchun tekshiruvlar ham har filialda alohida bajariladi: bir filialda
+ * bayram bo'lishi, boshqasida esa dars davom etishi mumkin.
+ *
+ * @param {object} branch
  */
-const sendDailyReportsJob = async () => {
-  console.log("📅 Starting daily reports job...");
-
-  if (!botInstance) {
-    console.error("❌ Bot instance not set!");
-    return;
-  }
+const sendReportsForBranch = async (branch) => {
+  const tag = `[${branch.name}]`;
+  console.log(`📅 ${tag} Kunlik hisobot boshlandi...`);
 
   try {
     // Holiday check
     const holidayCheck = await isHoliday(new Date());
     if (holidayCheck.isHoliday) {
       console.log(
-        `🎉 Bugun dam olish kuni: ${holidayCheck.holiday.name}. Hisobotlar yuborilmaydi.`
+        `🎉 ${tag} Bugun dam olish kuni: ${holidayCheck.holiday.name}. Hisobotlar yuborilmaydi.`
       );
       return;
     }
 
     // Get active users
     const tgUsers = await getActiveNotificationUsers();
-    console.log(`👥 Found ${tgUsers.length} active users`);
+    console.log(`👥 ${tag} ${tgUsers.length} ta faol foydalanuvchi`);
 
     if (tgUsers.length === 0) {
-      console.log("ℹ️ No users to send reports to");
+      console.log(`ℹ️ ${tag} Hisobot yuboriladigan foydalanuvchi yo'q`);
       return;
     }
 
@@ -73,17 +77,34 @@ const sendDailyReportsJob = async () => {
     }
 
     console.log(
-      `📊 Prepared ${reportDataList.length} reports (skipped ${skippedNoLesson} - bugun dars yo'q)`
+      `📊 ${tag} ${reportDataList.length} ta hisobot tayyor (${skippedNoLesson} ta o'tkazildi — bugun dars yo'q)`
     );
 
     // Send reports
     const results = await sendDailyReports(botInstance, reportDataList);
     console.log(
-      `✅ Daily reports job completed. Sent: ${results.sent}, Failed: ${results.failed}`
+      `✅ ${tag} Tugadi. Yuborildi: ${results.sent}, xato: ${results.failed}`
     );
   } catch (error) {
-    console.error("❌ Daily reports job error:", error);
+    console.error(`❌ ${tag} Kunlik hisobot xatosi:`, error);
   }
+};
+
+/**
+ * BARCHA filiallar bo'ylab kunlik hisobot.
+ *
+ * Ketma-ket: har filial Telegram'ga o'z tezlik chegarasi bilan yuboradi,
+ * parallel yuborish esa bitta bot tokeni ustidan limitga urilardi.
+ */
+const sendDailyReportsJob = async () => {
+  if (!botInstance) {
+    console.error("❌ Bot instance not set!");
+    return;
+  }
+
+  console.log("📅 Kunlik hisobot: barcha filiallar...");
+  await forEachBranch((branch) => sendReportsForBranch(branch));
+  console.log("✅ Kunlik hisobot: barcha filiallar tugadi");
 };
 
 /**

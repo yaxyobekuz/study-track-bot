@@ -3,11 +3,13 @@ const TEXTS = require("../data/texts.data");
 const { 
   authenticateStudent, 
   linkTelegramUser, 
-  getTgUser, 
+  getTgUser,
   unlinkTelegramUser,
+  resolveBranchByTelegramId,
   getStudentGradesByDate,
-  toggleNotifications 
+  toggleNotifications
 } = require("../services");
+const { runWithBranch } = require("../config/branch");
 const {
   formatDailyReport,
   sendMessage,
@@ -176,7 +178,13 @@ const handlePassword = async (bot, msg, password) => {
       username: msg.from.username,
     };
 
-    const linkResult = await linkTelegramUser(telegramUser, authResult.user);
+    // `authResult.branch` — o'quvchi qaysi filialda ekani. `TgUser` o'sha
+    // filial bazasiga, yo'naltirgich esa platformaga yoziladi.
+    const linkResult = await linkTelegramUser(
+      telegramUser,
+      authResult.user,
+      authResult.branch,
+    );
 
     if (!linkResult.success) {
       if (linkResult.error === "ALREADY_LINKED") {
@@ -434,19 +442,49 @@ const registerHandlers = (bot) => {
       console.error(`❌ ${label} error:`, error);
     });
 
+  /**
+   * FILIAL KONTEKSTINI YOQADI — serverdagi `auth.middleware` bilan bir xil rol.
+   *
+   * Telegram ID → qaysi filial (platformadagi yo'naltirgich), so'ng butun
+   * handler o'sha kontekstda bajariladi. Shundan keyin `getStudentGradesByDate`,
+   * `toggleNotifications` kabi service chaqiruvlari to'g'ri filial bazasiga
+   * boradi — ularning o'zini o'zgartirish shart emas.
+   *
+   * Hali bog'lanmagan foydalanuvchida filial YO'Q: login oqimi
+   * (`handleUsername`/`handlePassword`) filialni username bo'yicha o'zi
+   * aniqlaydi.
+   */
+  const inBranch = async (telegramId, fn) => {
+    const branch = telegramId
+      ? await resolveBranchByTelegramId(telegramId)
+      : null;
+    return branch ? runWithBranch(branch, fn) : fn();
+  };
+
   // /start command
-  bot.onText(/\/start/, (msg) => safe(handleStart(bot, msg), "Start handler"));
+  bot.onText(/\/start/, (msg) =>
+    safe(
+      inBranch(msg.from?.id?.toString(), () => handleStart(bot, msg)),
+      "Start handler",
+    ),
+  );
 
   // All messages
   bot.on("message", (msg) => {
     if (msg.text && !msg.text.startsWith("/")) {
-      safe(handleMessage(bot, msg), "Message handler");
+      safe(
+        inBranch(msg.from?.id?.toString(), () => handleMessage(bot, msg)),
+        "Message handler",
+      );
     }
   });
 
   // Callback queries
   bot.on("callback_query", (query) =>
-    safe(handleCallbackQuery(bot, query), "Callback handler")
+    safe(
+      inBranch(query.from?.id?.toString(), () => handleCallbackQuery(bot, query)),
+      "Callback handler",
+    ),
   );
 
   console.log("📝 Bot handlers registered");
