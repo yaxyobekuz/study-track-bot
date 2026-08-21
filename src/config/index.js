@@ -5,8 +5,15 @@ const config = {
   // Telegram bot token
   botToken: process.env.BOT_TOKEN,
   
-  // PostgreSQL (Prisma) — server bilan bir xil baza
+  // PostgreSQL (Prisma) — server bilan bir xil baza.
+  // Filial `?schema=` bilan tanlanadi (config/branch.js).
   databaseUrl: process.env.DATABASE_URL,
+
+  // Platforma schema'si — filiallar reyestri va yo'naltirgichlar
+  // (username → filial, telegramId → filial). Kiritilmasa DATABASE_URL dan
+  // hosil qilinadi (`validateConfig`).
+  platformDatabaseUrl: process.env.PLATFORM_DATABASE_URL || null,
+  platformSchema: process.env.PLATFORM_SCHEMA || "platform",
   
   // Daily report sending time (HH:MM format)
   dailyReportTime: process.env.DAILY_REPORT_TIME || "18:00",
@@ -31,7 +38,20 @@ const validateConfig = () => {
   if (!timeRegex.test(config.dailyReportTime)) {
     throw new Error("DAILY_REPORT_TIME must be in HH:MM format (e.g., 18:00)");
   }
-  
+
+  if (!config.databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is required");
+  }
+
+  // Platforma ulanish satri — DATABASE_URL dan hosila. `process.env` ga ham
+  // yoziladi, chunki `prisma generate` uni datasource'dan o'qiydi.
+  if (!config.platformDatabaseUrl) {
+    const url = new URL(config.databaseUrl);
+    url.searchParams.set("schema", config.platformSchema);
+    config.platformDatabaseUrl = url.toString();
+    process.env.PLATFORM_DATABASE_URL = config.platformDatabaseUrl;
+  }
+
   return true;
 };
 

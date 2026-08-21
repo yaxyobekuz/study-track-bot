@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "postinstall": "prisma generate",
-    "prisma:generate": "prisma generate"
+    "postinstall": "npm run prisma:generate",
+    "prisma:generate": "prisma generate && prisma generate --schema=prisma/platform.schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

@@ -1,40 +1,32 @@
 /**
- * Bot uchun PrismaClient singleton + ID auto-generatsiya extension.
+ * FILIAL client'i — joriy filial kontekstiga qarab tanlanadigan PrismaClient.
  *
- * Bot server bilan BIR XIL PostgreSQL bazani ishlatadi. Yangi yozuvlar
- * (asosan TgUser) uchun 24-hex ObjectId-mos ID generatsiya qilinadi —
- * server bilan bir xil format.
+ * Bot ham serverdagi bilan bir xil naqshdan foydalanadi: import yo'li
+ * o'zgarmaydi (`require("../config/prisma")`), lekin modul endi Proxy —
+ * har murojaatda joriy filialning client'iga yo'naltiradi
+ * (`config/branch.js` dagi AsyncLocalStorage).
+ *
+ * Natijada `src/services/*` dagi so'rovlar boshqa filialning ma'lumotini
+ * qaytara olmaydi: ajratish so'rov shartida emas, ULANISH darajasida.
+ *
+ * ⚠️ Kontekstdan tashqarida murojaat XATO beradi. Xabar kelganda kontekst
+ * `bot.handler.js` da (telegramId → filial), cron'da esa `forEachBranch`
+ * ichida yoqiladi.
  */
 
-const { PrismaClient } = require("../generated/prisma");
-const { ObjectId } = require("bson");
+const { getCurrentClient } = require("./branch");
 
-// Bot yozadigan modellar (id String @db.Char(24))
-const AUTO_ID_MODELS = new Set(["TgUser", "User", "Grade", "Class", "Subject", "Schedule", "ScheduleLesson", "Holiday"]);
+const prisma = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      if (prop === "then") return undefined;
 
-const basePrisma = new PrismaClient({ log: ["error"] });
-
-const prisma = basePrisma.$extends({
-  name: "auto-id",
-  query: {
-    $allModels: {
-      async create({ model, args, query }) {
-        if (AUTO_ID_MODELS.has(model) && args.data && args.data.id == null) {
-          args.data.id = new ObjectId().toHexString();
-        }
-        return query(args);
-      },
-      async createMany({ model, args, query }) {
-        if (AUTO_ID_MODELS.has(model) && args.data) {
-          const rows = Array.isArray(args.data) ? args.data : [args.data];
-          for (const row of rows) {
-            if (row.id == null) row.id = new ObjectId().toHexString();
-          }
-        }
-        return query(args);
-      },
+      const client = getCurrentClient();
+      const value = Reflect.get(client, prop);
+      return typeof value === "function" ? value.bind(client) : value;
     },
   },
-});
+);
 
 module.exports = prisma;

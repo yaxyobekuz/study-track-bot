@@ -1,0 +1,101 @@
+// Study-Track BOT — PLATFORMA schema'si (subset).
+//
+// Bot ham server kabi FILIALLASHTIRILGAN: har filial o'z PostgreSQL
+// schema'sida yashaydi va bot qaysi schema'ga borishni platformadagi
+// yo'naltirgichlardan biladi:
+//
+//   UserDirectory     — username → qaysi filial (login uchun)
+//   TelegramDirectory — telegramId → qaysi filial (har xabar uchun)
+//
+// Ikkinchisi bo'lmasa bot har kelgan xabarda BARCHA filial schema'larini
+// skanerlashiga to'g'ri kelardi.
+//
+// DIQQAT: jadvallar SERVER tomonidan yaratiladi/migratsiya qilinadi
+// (server/prisma/platform/schema.prisma). Bot hech qanday migratsiya
+// yugurtmaydi — faqat `prisma generate`. Server schema o'zgarsa, bu faylni
+// ham mos ravishda yangilash kerak.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/platform"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PLATFORM_DATABASE_URL")
+}
+
+enum BranchStatus {
+  provisioning
+  ready
+  failed
+}
+
+model Branch {
+  id String @id @db.Char(24)
+
+  code       String @unique
+  name       String
+  schemaName String @unique @map("schema_name")
+
+  shortName String @default("") @map("short_name")
+  address   String @default("")
+  phone     String @default("")
+
+  status         BranchStatus @default(provisioning)
+  provisionError String?      @map("provision_error")
+
+  isDefault  Boolean   @default(false) @map("is_default")
+  isActive   Boolean   @default(true) @map("is_active")
+  isArchived Boolean   @default(false) @map("is_archived")
+  archivedAt DateTime? @map("archived_at")
+  sortOrder  Int       @default(0) @map("sort_order")
+
+  createdBy String?  @map("created_by") @db.Char(24)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users         UserDirectory[]
+  telegramLinks TelegramDirectory[]
+
+  @@index([isArchived, isActive, sortOrder])
+  @@map("branches")
+}
+
+model UserDirectory {
+  id       String @id @db.Char(24)
+  username String @unique
+
+  branchId String @map("branch_id") @db.Char(24)
+
+  role      String
+  firstName String @default("") @map("first_name")
+  lastName  String @default("") @map("last_name")
+
+  isActive   Boolean @default(true) @map("is_active")
+  isArchived Boolean @default(false) @map("is_archived")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([branchId, role])
+  @@index([branchId, isArchived])
+  @@map("user_directory")
+}
+
+model TelegramDirectory {
+  telegramId String @id @map("telegram_id")
+
+  branchId  String @map("branch_id") @db.Char(24)
+  studentId String @map("student_id") @db.Char(24)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId])
+  @@map("telegram_directory")
+}
