@@ -3,15 +3,38 @@ const { config } = require("../config");
 const TEXTS = require("../data/texts.data");
 
 /**
- * Vaqtni formatlash
- * @param {Date} date
+ * Oy nomlari — kanonik sana formati uchun ("21-may, 2025").
+ * `getMonth()` tartibida (0 = yanvar).
+ */
+const MONTHS_UZ = [
+  "yanvar",
+  "fevral",
+  "mart",
+  "aprel",
+  "may",
+  "iyun",
+  "iyul",
+  "avgust",
+  "sentabr",
+  "oktabr",
+  "noyabr",
+  "dekabr",
+];
+
+/**
+ * Kanonik sana: "21-may, 2025".
+ *
+ * ⚠️ Tizimda sana FAQAT shu ko'rinishda ko'rsatiladi — ota-ona botdan
+ * "21.05.2025", panelda esa "21-may, 2025" ko'rmasligi kerak.
+ * To'liq qoida: `.claude/rules/dates.md`.
+ *
+ * @param {Date|string|number} date
  * @returns {string}
  */
 const formatDate = (date) => {
-  const day = date.getDate().toString().padStart(2, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}.${month}.${year}`;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getDate()}-${MONTHS_UZ[d.getMonth()]}, ${d.getFullYear()}`;
 };
 
 /**
