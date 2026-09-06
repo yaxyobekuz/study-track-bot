@@ -1,3 +1,55 @@
+/**
+ * PLATFORMA ULANISH SATRI — `DATABASE_URL` dan hosila.
+ *
+ * ⚠️ MODUL YUKLANGANDA HISOBLANADI, `validateConfig()` ICHIDA EMAS.
+ *
+ * `index.js` da tartib shunday:
+ *
+ *     6-qator:  require("./src/config/database")   → branch.js → PlatformClient
+ *     12-qator: validateConfig()
+ *
+ * Ya'ni Prisma client 6-qatorda YARATILADI, fallback esa 12-qatorda
+ * ishlardi. Agar `.env` da `PLATFORM_DATABASE_URL` bo'lmasa,
+ * `datasourceUrl: null` bilan `PrismaClientConstructorValidationError`
+ * tashlanardi va bot startupda yiqilardi — deploy paytida aynan shu
+ * bo'lgan.
+ *
+ * ⚠️ `prisma generate` bu o'zgaruvchini TALAB QILMAYDI (u ulanmaydi),
+ * shuning uchun build muvaffaqiyatli o'tib, xato faqat ishga tushishda
+ * chiqadi. Buni faqat ishga tushirish logidan bilib olish mumkin.
+ *
+ * Serverda bu allaqachon to'g'ri (`env.config.js` da modul darajasida),
+ * bot esa undan orqada qolgan edi.
+ *
+ * @param {string|undefined} databaseUrl
+ * @param {string} schema
+ * @returns {string|null}
+ */
+const derivePlatformUrl = (databaseUrl, schema) => {
+  if (!databaseUrl) return null;
+
+  try {
+    const url = new URL(databaseUrl);
+    url.searchParams.set("schema", schema);
+    return url.toString();
+  } catch {
+    // Noto'g'ri formatdagi satr — `validateConfig` uni baribir ushlaydi
+    return null;
+  }
+};
+
+const PLATFORM_SCHEMA = process.env.PLATFORM_SCHEMA || "platform";
+
+const PLATFORM_DATABASE_URL =
+  process.env.PLATFORM_DATABASE_URL ||
+  derivePlatformUrl(process.env.DATABASE_URL, PLATFORM_SCHEMA);
+
+// ⚠️ `process.env` ga ham qaytariladi: `prisma generate` uni
+// datasource'dan o'qiydi va CLI chaqiruvlarida kerak bo'ladi.
+if (PLATFORM_DATABASE_URL && !process.env.PLATFORM_DATABASE_URL) {
+  process.env.PLATFORM_DATABASE_URL = PLATFORM_DATABASE_URL;
+}
+
 const config = {
   // Node environment
   nodeEnv: process.env.NODE_ENV || "development",
@@ -12,8 +64,8 @@ const config = {
   // Platforma schema'si — filiallar reyestri va yo'naltirgichlar
   // (username → filial, telegramId → filial). Kiritilmasa DATABASE_URL dan
   // hosil qilinadi (`validateConfig`).
-  platformDatabaseUrl: process.env.PLATFORM_DATABASE_URL || null,
-  platformSchema: process.env.PLATFORM_SCHEMA || "platform",
+  platformDatabaseUrl: PLATFORM_DATABASE_URL,
+  platformSchema: PLATFORM_SCHEMA,
   
   // Daily report sending time (HH:MM format)
   dailyReportTime: process.env.DAILY_REPORT_TIME || "18:00",
@@ -43,13 +95,14 @@ const validateConfig = () => {
     throw new Error("DATABASE_URL environment variable is required");
   }
 
-  // Platforma ulanish satri — DATABASE_URL dan hosila. `process.env` ga ham
-  // yoziladi, chunki `prisma generate` uni datasource'dan o'qiydi.
+  // ⚠️ Bu yerda faqat TEKSHIRUV qoladi, hosil qilish emas: satr modul
+  // yuklanganda hisoblangan (yuqoridagi izoh). Agar shunda ham bo'sh
+  // bo'lsa, `DATABASE_URL` noto'g'ri formatda — buni jim o'tkazib
+  // yubormaslik kerak.
   if (!config.platformDatabaseUrl) {
-    const url = new URL(config.databaseUrl);
-    url.searchParams.set("schema", config.platformSchema);
-    config.platformDatabaseUrl = url.toString();
-    process.env.PLATFORM_DATABASE_URL = config.platformDatabaseUrl;
+    throw new Error(
+      "PLATFORM_DATABASE_URL hosil qilinmadi — DATABASE_URL formatini tekshiring",
+    );
   }
 
   return true;
