@@ -38,33 +38,33 @@ enum HolidayType {
 }
 
 model User {
-  id            String    @id @db.Char(24)
-  username      String    @unique
-  password      String
-  plainPassword String?   @map("plain_password")
-  firstName     String    @map("first_name")
-  lastName      String?   @map("last_name")
-  telegramIds   String[]  @map("telegram_ids")
-  role          String
-  isActive      Boolean   @default(true) @map("is_active")
-  gender        Gender?
-  coinBalance   Int       @default(0) @map("coin_balance")
-  penaltyPoints Int       @default(0) @map("penalty_points")
-  isArchived    Boolean   @default(false) @map("is_archived")
-  archivedAt    DateTime? @map("archived_at")
-  archiveSnapshot Json?   @map("archive_snapshot")
-  workStartTime String?   @map("work_start_time")
-  workEndTime   String?   @map("work_end_time")
-  workDays      Int[]     @map("work_days")
-  weeklySchedule Json     @default("{}") @map("weekly_schedule")
+  id               String    @id @db.Char(24)
+  username         String    @unique
+  password         String
+  plainPassword    String?   @map("plain_password")
+  firstName        String    @map("first_name")
+  lastName         String?   @map("last_name")
+  telegramIds      String[]  @map("telegram_ids")
+  role             String
+  isActive         Boolean   @default(true) @map("is_active")
+  gender           Gender?
+  coinBalance      Int       @default(0) @map("coin_balance")
+  penaltyPoints    Int       @default(0) @map("penalty_points")
+  isArchived       Boolean   @default(false) @map("is_archived")
+  archivedAt       DateTime? @map("archived_at")
+  archiveSnapshot  Json?     @map("archive_snapshot")
+  workStartTime    String?   @map("work_start_time")
+  workEndTime      String?   @map("work_end_time")
+  workDays         Int[]     @map("work_days")
+  weeklySchedule   Json      @default("{}") @map("weekly_schedule")
   premiumIsActive  Boolean   @default(false) @map("premium_is_active")
   premiumExpiresAt DateTime? @map("premium_expires_at")
-  profilePicture String?   @map("profile_picture") @db.Char(24)
-  emojiBadgeId  String?   @map("emoji_badge_id")
-  displayName   String?   @map("display_name")
-  nameColor     String?   @map("name_color")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  profilePicture   String?   @map("profile_picture") @db.Char(24)
+  emojiBadgeId     String?   @map("emoji_badge_id")
+  displayName      String?   @map("display_name")
+  nameColor        String?   @map("name_color")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   classes UserClass[]
 
@@ -181,20 +181,76 @@ model TgUser {
 }
 
 model Holiday {
-  id          String      @id @db.Char(24)
-  name        String
-  description String?
-  type        HolidayType
-  date        DateTime?
-  startDate   DateTime?   @map("start_date")
-  endDate     DateTime?   @map("end_date")
-  recurringDate      Json? @map("recurring_date")
-  recurringStartDate Json? @map("recurring_start_date")
-  recurringEndDate   Json? @map("recurring_end_date")
-  isActive    Boolean     @default(true) @map("is_active")
-  createdBy   String?     @map("created_by") @db.Char(24)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id                 String      @id @db.Char(24)
+  name               String
+  description        String?
+  type               HolidayType
+  date               DateTime?
+  startDate          DateTime?   @map("start_date")
+  endDate            DateTime?   @map("end_date")
+  recurringDate      Json?       @map("recurring_date")
+  recurringStartDate Json?       @map("recurring_start_date")
+  recurringEndDate   Json?       @map("recurring_end_date")
+  isActive           Boolean     @default(true) @map("is_active")
+  createdBy          String?     @map("created_by") @db.Char(24)
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
 
   @@map("holidays")
+}
+
+// ─────────────────────────────────────────────
+// FAOLLIK
+// ─────────────────────────────────────────────
+//
+// ⚠️ SERVER SCHEMA'SINING NUSXASI (`server/prisma/schema.prisma` dagi
+// `ActivityEvent`). Bot migratsiya yugurtmaydi — jadvalni server
+// yaratadi (`20260906180000_activity_and_multirole`), bu yerda faqat
+// YOZISH uchun tavsif turadi.
+//
+// ⚠️ NIMA UCHUN BOT YOZADI. "Bu sinfning 25 ta ota-onasidan 20 tasi
+// bugun botdan foydalandi" degan savolga faqat BOT javob bera oladi:
+// server ota-onaning tugma bosganini ko'rmaydi. Ilgari `lastActivity`
+// faqat hisob bog'langan lahzada bir marta yozilar edi, ya'ni u amalda
+// "qachon bog'landi" degani bo'lib qolgan edi.
+//
+// ⚠️ `ActivityEvent` ni `AUTO_ID_MODELS` ga QO'SHISH SHART
+// (`src/config/branch.js`) — aks holda `id` bo'sh ketadi va INSERT
+// yiqiladi.
+
+enum ActivityChannel {
+  bot
+  admin
+  teacher
+  student
+  reception
+  worker
+}
+
+model ActivityEvent {
+  id String @id @db.Char(24)
+
+  channel ActivityChannel
+  action  String          @db.VarChar(48)
+
+  // "user:<id>" yoki "tg:<telegramId>" — COUNT(DISTINCT) uchun yagona kalit
+  actorKey String @map("actor_key") @db.VarChar(40)
+
+  userId     String? @map("user_id") @db.Char(24)
+  telegramId String? @map("telegram_id")
+  studentId  String? @map("student_id") @db.Char(24)
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  // Kun koordinatasi — Toshkent kuni, UTC yarim tunida
+  day        DateTime @map("day") @db.Date
+
+  meta Json?
+
+  @@index([day, channel])
+  @@index([channel, occurredAt(sort: Desc)])
+  @@index([userId, day])
+  @@index([telegramId, day])
+  @@index([studentId, day])
+  @@index([actorKey, day])
+  @@map("activity_events")
 }

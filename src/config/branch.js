@@ -79,6 +79,10 @@ const AUTO_ID_MODELS = new Set([
   "Schedule",
   "ScheduleLesson",
   "Holiday",
+  // ⚠️ Faollik hodisasi — botning YANGI yozadigan modeli. Bu ro'yxatga
+  // qo'shilmasa `id` bo'sh ketadi va INSERT yiqiladi (jadvalda
+  // `@default` yo'q: ID 24-hex ObjectId bo'lishi shart).
+  "ActivityEvent",
 ]);
 
 const autoIdExtension = {

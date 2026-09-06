@@ -15,6 +15,7 @@ const {
   sendMessage,
   escapeMarkdown,
 } = require("../services/message.service");
+const { track } = require("../services/activity.service");
 
 // Store user state (session)
 const userStates = new Map();
@@ -92,6 +93,12 @@ const handleStart = async (bot, msg) => {
   const existingTgUser = await getTgUser(telegramId);
 
   if (existingTgUser && existingTgUser.student) {
+    track({
+      telegramId,
+      studentId: existingTgUser.student.id,
+      action: "bot.start",
+    });
+
     const studentName = escapeMarkdown(
       existingTgUser.student.fullName ||
         `${existingTgUser.student.firstName} ${existingTgUser.student.lastName || ""}`.trim()
@@ -206,6 +213,26 @@ const handlePassword = async (bot, msg, password) => {
       student.classes?.map((c) => c.name).join(", ") || "Noma'lum"
     );
 
+    // ⚠️ `runWithBranch` MAJBURIY va u aynan shu yerda kerak.
+    //
+    // `registerHandlers` dagi `inBranch()` filialni TELEGRAM ID
+    // bo'yicha topadi, login oqimida esa foydalanuvchi hali
+    // bog'lanmagan — ya'ni bu handler FILIALSIZ ishlaydi va
+    // `track()` jimgina hech narsa yozmasdi. Bog'lanish esa aynan
+    // eng muhim hodisa: usiz "bu oy nechta yangi ota-ona ulandi"
+    // degan savol javobsiz qolardi.
+    //
+    // Filial `authResult.branch` da allaqachon ma'lum (`TgUser` ham
+    // o'sha yerga yozilgan), shuning uchun hodisani o'sha kontekstda
+    // yozamiz.
+    runWithBranch(authResult.branch, () =>
+      track({
+        telegramId: msg.from.id.toString(),
+        studentId: student.id,
+        action: "bot.link",
+      }),
+    );
+
     await sendMessage(
       bot,
       chatId,
@@ -235,6 +262,12 @@ const handleMyGrades = async (bot, msg) => {
     return;
   }
 
+  track({
+    telegramId,
+    studentId: tgUser.student.id,
+    action: "bot.grades",
+  });
+
   const grades = await getStudentGradesByDate(tgUser.student.id, new Date());
   
   const reportData = {
@@ -262,6 +295,8 @@ const handleSettings = async (bot, msg) => {
     return;
   }
 
+  track({ telegramId, studentId: tgUser.student.id, action: "bot.settings" });
+
   const notifStatus = tgUser.notificationsEnabled 
     ? TEXTS.NOTIFICATIONS_ON 
     : TEXTS.NOTIFICATIONS_OFF;
@@ -288,6 +323,9 @@ const handleSettings = async (bot, msg) => {
  */
 const handleStatistics = async (bot, msg) => {
   const chatId = msg.chat.id;
+
+  track({ telegramId: msg.from.id.toString(), action: "bot.statistics" });
+
   await bot.sendMessage(chatId, TEXTS.STATISTICS_TEXT, {
     parse_mode: "Markdown",
     reply_markup: {
@@ -316,6 +354,12 @@ const handleCallbackQuery = async (bot, query) => {
   if (data.startsWith("toggle_notif_")) {
     const enabled = data === "toggle_notif_true";
     await toggleNotifications(telegramId, enabled);
+
+    track({
+      telegramId,
+      action: "bot.notifications",
+      meta: { enabled },
+    });
     
     const status = enabled ? TEXTS.NOTIFICATIONS_ON : TEXTS.NOTIFICATIONS_OFF;
     await bot.editMessageText(
@@ -359,6 +403,11 @@ const handleCallbackQuery = async (bot, query) => {
   }
 
   if (data === "confirm_unlink") {
+    // ⚠️ Hodisa UZISHDAN OLDIN yoziladi: `unlinkTelegramUser` qatorni
+    // o'chiradi va undan keyin `lastActivity` yangilanadigan joy
+    // qolmaydi
+    track({ telegramId, action: "bot.unlink" });
+
     await unlinkTelegramUser(telegramId);
     await bot.editMessageText(
       TEXTS.UNLINK_SUCCESS,

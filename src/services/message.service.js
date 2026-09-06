@@ -259,14 +259,60 @@ const sendBatchMessages = async (bot, messages) => {
  * @returns {Object}
  */
 const sendDailyReports = async (bot, reportDataList) => {
-  const messages = reportDataList.map(reportData => ({
-    chatId: reportData.tgUser.chatId,
-    message: formatDailyReport(reportData),
-    options: {}
-  }));
+  const { track } = require("./activity.service");
 
-  console.log(`📊 Sending ${messages.length} daily reports...`);
-  const results = await sendBatchMessages(bot, messages);
+  console.log(`📊 Sending ${reportDataList.length} daily reports...`);
+
+  const results = { sent: 0, failed: 0 };
+  const { messageDelayMs, batchSize, batchDelayMs } = config;
+
+  // ⚠️ `sendBatchMessages` DAN FOYDALANMAYDI va bu ataylab: bu yerda har
+  // xabarning natijasi KIMGA tegishli ekani kerak. Kunlik hisobot —
+  // ota-onalarga boradigan eng katta oqim va u hech qayerda qayd
+  // etilmasdi (`Message` qatori ham yaratilmaydi), ya'ni "kecha 240 ta
+  // ota-onaga yubordik, 12 tasi botni bloklagan" degan savol javobsiz
+  // qolardi.
+  //
+  // ⚠️ Hodisa `bot.out.` prefiksi bilan — u BIZ yuborgan xabar,
+  // foydalanuvchi harakati EMAS va faol foydalanuvchi sanog'iga
+  // kirmaydi (`activity.service.js` dagi izoh).
+  for (let i = 0; i < reportDataList.length; i++) {
+    const reportData = reportDataList[i];
+    const { tgUser } = reportData;
+
+    const success = await sendMessage(
+      bot,
+      tgUser.chatId,
+      formatDailyReport(reportData),
+      {},
+    );
+
+    if (success) results.sent++;
+    else results.failed++;
+
+    track({
+      telegramId: tgUser.telegramId,
+      // ⚠️ `tgUser.student` bu bosqichda OBYEKT (`getActiveNotificationUsers`
+      // uni qo'lda yuklaydi), satr emas — shuning uchun `.id` olinadi
+      studentId: reportData.student?.id ?? tgUser.student?.id ?? null,
+      action: success ? "bot.out.report" : "bot.out.failed",
+      meta: { hasGrades: Boolean(reportData.hasGrades) },
+    });
+
+    // Har xabar orasidagi kechikish
+    if (i < reportDataList.length - 1) {
+      await delay(messageDelayMs);
+    }
+
+    // Partiya tugagach kattaroq kechikish
+    if ((i + 1) % batchSize === 0 && i < reportDataList.length - 1) {
+      console.log(
+        `📤 Batch ${Math.floor((i + 1) / batchSize)} completed. Waiting...`,
+      );
+      await delay(batchDelayMs);
+    }
+  }
+
   console.log(`✅ Reports sent: ${results.sent}, Failed: ${results.failed}`);
 
   return results;
