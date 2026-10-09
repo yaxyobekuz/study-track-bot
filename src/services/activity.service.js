@@ -67,14 +67,28 @@ function tashkentDay() {
 /**
  * Bitta hodisani yozadi. Xatoni yutadi.
  *
+ * ⚠️ `studentId` va `userId` IKKI XIL MA'NODA, ikkalasi ham ixtiyoriy:
+ *
+ *   `studentId` — hodisa QAYSI O'QUVCHI haqida (ota-ona oqimi). Admin
+ *                 panelidagi "shu sinfning ota-onalari" kesimi shu
+ *                 ustunga tayanadi.
+ *   `userId`    — hodisani KIM qildi, agar u tizim foydalanuvchisi bo'lsa
+ *                 (xodim oqimi). Ota-onada bu ustun BO'SH: u tizimda
+ *                 foydalanuvchi emas, faqat Telegram hisobi.
+ *
+ * Xodim harakatida `studentId` yozilmaydi — hodisa hech bir o'quvchi
+ * haqida emas va uni o'quvchi kesimiga qo'shsak, ota-ona qamrovi
+ * ko'rsatkichi buzilardi.
+ *
  * @param {object} input
  * @param {string} input.telegramId
  * @param {string} [input.studentId]
+ * @param {string} [input.userId]
  * @param {string} input.action - "bot.start", "bot.grades", ...
  * @param {object} [input.meta]
  * @returns {Promise<void>}
  */
-async function record({ telegramId, studentId, action, meta }) {
+async function record({ telegramId, studentId, userId, action, meta }) {
   if (!telegramId) return;
 
   // Filial konteksti bo'lmasa yozib bo'lmaydi — bog'lanmagan
@@ -94,6 +108,7 @@ async function record({ telegramId, studentId, action, meta }) {
         actorKey: `tg:${telegramId}`,
         telegramId: String(telegramId),
         studentId: studentId ?? null,
+        userId: userId ?? null,
         day,
         meta: meta ?? undefined,
       },
