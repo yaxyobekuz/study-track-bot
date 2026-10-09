@@ -1,21 +1,45 @@
 // Bot handlers - /start, authentication and other commands
+//
+// ── IKKI OQIM ────────────────────────────────────────────────────────
+//
+// Botga HAR QANDAY rol kiradi va kirgan odamga qarab boshqa menyu ochiladi:
+//
+//   OTA-ONA  (o'quvchi logini)  → baholar, statistika, bildirishnoma
+//   XODIM    (o'z logini)       → davomat, topshiriq, darslar, oylik
+//
+// ⚠️ TUGMA MATNLARI IKKI MENYUDA TAKRORLANMASLIGI SHART. Telegram'da
+// "tugma" — oddiy matnli xabar, ya'ni handler kelgan satrni solishtirib
+// ishlaydi. Bir xil satr bo'lsa xodimga ota-ona oqimi ochilib ketardi.
+//
+// ⚠️ HAR BIR HANDLER BOG'LANISH TURINI QAYTA TEKSHIRADI. Telegram
+// klaviaturasi MIJOZDA qoladi: rol almashgandan keyin ham odam eski
+// tugmani bosib yuborishi mumkin, shuning uchun "sen qaysi oqimdasan"
+// degan savol tugma matniga emas, bazadagi `linkKind` ga qarab beriladi.
+
 const TEXTS = require("../data/texts.data");
-const { 
-  authenticateStudent, 
-  linkTelegramUser, 
+const {
+  authenticateUser,
+  linkTelegramUser,
   getTgUser,
   unlinkTelegramUser,
   resolveBranchByTelegramId,
   getStudentGradesByDate,
-  toggleNotifications
+  toggleNotifications,
+  fullNameOf,
+  LINK_KIND,
 } = require("../services");
+const staffService = require("../services/staff.service");
 const { runWithBranch } = require("../config/branch");
 const {
   formatDailyReport,
+  formatStaffAttendance,
+  formatStaffTasks,
+  formatStaffLessons,
+  formatStaffPayroll,
   sendMessage,
   escapeMarkdown,
 } = require("../services/message.service");
-const { track } = require("../services/activity.service");
+const { track, tashkentDay } = require("../services/activity.service");
 
 // Store user state (session)
 const userStates = new Map();
@@ -27,6 +51,17 @@ const STATES = {
   WAITING_PASSWORD: "WAITING_PASSWORD",
   WAITING_UNLINK_CONFIRM: "WAITING_UNLINK_CONFIRM",
 };
+
+/**
+ * XODIM HODISALARI PREFIKSI — serverdagi `activityDashboard.service.js`
+ * dagi `STAFF_PREFIX` bilan AYNI satr.
+ *
+ * ⚠️ IKKALASI BIRGA O'ZGARADI. Panelda "bot" kanali OTA-ONA QAMROVINI
+ * bildiradi (`botRate` ning maxraji — o'quvchiga bog'langan hisoblar), va
+ * xodim hodisasi shu prefiks bo'yicha sanoqdan chiqariladi. Prefiks
+ * mos kelmasa ulush jimgina 100% dan oshib ketardi.
+ */
+const STAFF_ACTION = "bot.staff.";
 
 /**
  * Create keyboard buttons
@@ -41,6 +76,33 @@ const getMainKeyboard = () => ({
   },
 });
 
+/**
+ * XODIM MENYUSI.
+ *
+ * `showLessons` — jadvalda darsi bor xodimda "Bugungi darslarim" tugmasi.
+ * ⚠️ ROL NOMIGA EMAS, MA'LUMOTGA QARAB (`staff.service#hasLessons`):
+ * rollar dinamik va dars beradigan ma'muriyat xodimi ham bor, shuning
+ * uchun "o'qituvchimi?" degan savol jadvaldan so'raladi.
+ *
+ * @param {boolean} showLessons
+ */
+const getStaffKeyboard = (showLessons = false) => {
+  const keyboard = [
+    [{ text: TEXTS.BTN_STAFF_ATTENDANCE }, { text: TEXTS.BTN_STAFF_TASKS }],
+  ];
+
+  if (showLessons) {
+    keyboard.push([{ text: TEXTS.BTN_STAFF_LESSONS }]);
+  }
+
+  keyboard.push([
+    { text: TEXTS.BTN_STAFF_PAYROLL },
+    { text: TEXTS.BTN_SETTINGS },
+  ]);
+
+  return { reply_markup: { keyboard, resize_keyboard: true } };
+};
+
 const getStartKeyboard = () => ({
   reply_markup: {
     keyboard: [
@@ -50,16 +112,39 @@ const getStartKeyboard = () => ({
   },
 });
 
-const getConfirmKeyboard = () => ({
-  reply_markup: {
-    inline_keyboard: [
-      [
-        { text: "✅ Ha", callback_data: "confirm_unlink" },
-        { text: "❌ Yo'q", callback_data: "cancel_unlink" },
-      ],
-    ],
-  },
-});
+/**
+ * XODIM OQIMI OCHIQMI?
+ *
+ * ⚠️ HAR SO'ROVDA TEKSHIRILADI, bir marta loginda emas.
+ * `authenticateUser` arxivlangan xodimni kiritmaydi, lekin ALLAQACHON
+ * bog'langan hisob o'z-o'zidan uzilmaydi: odam ishdan ketgach botda
+ * oylik va topshiriqlarini ko'rib turardi.
+ *
+ * @param {object} tgUser - `getTgUser()` natijasi
+ * @returns {boolean}
+ */
+const staffFlowOpen = (tgUser) =>
+  tgUser?.kind === LINK_KIND.STAFF &&
+  Boolean(tgUser.person) &&
+  tgUser.person.isActive &&
+  !tgUser.person.isArchived;
+
+/**
+ * Bog'lanish turiga mos klaviatura. Xodimda dars bor-yo'qligi tekshiriladi.
+ * @param {object} tgUser - `getTgUser()` natijasi
+ */
+const keyboardFor = async (tgUser) => {
+  // ⚠️ `person` NULL BO'LISHI MUMKIN — bazada YETIM qatorlar bor:
+  // bog'langan odam keyin o'chirilgan, `tg_users` qatori esa qolgan.
+  // Bunday holda xodim klaviaturasini qurishga urinib bo'lmaydi
+  // (`hasLessons(null)` yiqilardi) va u ma'nosiz ham: foydalanuvchini
+  // qayta login qilishga yuborish kerak.
+  if (!staffFlowOpen(tgUser)) {
+    return getMainKeyboard();
+  }
+  const showLessons = await staffService.hasLessons(tgUser.person);
+  return getStaffKeyboard(showLessons);
+};
 
 /**
  * Get user state
@@ -83,6 +168,101 @@ const clearUserState = (chatId) => {
 };
 
 /**
+ * BOG'LANGAN XODIMNI OLADI yoki foydalanuvchini to'g'ri yo'lga qaytaradi.
+ *
+ * Har bir xodim handler'i shundan boshlanadi: bog'lanmagan bo'lsa login
+ * taklif qiladi, ota-ona sifatida bog'langan bo'lsa (eski klaviaturadan
+ * bosilgan tugma) o'z menyusini qaytarib beradi.
+ *
+ * @returns {Promise<object|null>} tgUser yoki `null` (javob yuborilgan)
+ */
+const requireStaff = async (bot, msg) => {
+  const chatId = msg.chat.id;
+  const tgUser = await getTgUser(msg.from.id.toString());
+
+  if (!tgUser) {
+    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
+    return null;
+  }
+
+  // ⚠️ YETIM QATOR — bog'langan odam o'chirilgan. Buni rol almashishi
+  // bilan ARALASHTIRMASLIK kerak: "endi ota-ona sifatida kirgansiz"
+  // degan xabar yolg'on bo'lardi, chunki hech qanday hisob qolmagan.
+  if (!tgUser.person) {
+    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
+    return null;
+  }
+
+  if (tgUser.kind !== LINK_KIND.STAFF) {
+    // Eski klaviaturadagi xodim tugmasi — endi ota-ona sifatida kirgan
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.SWITCHED_TO_STUDENT,
+      getMainKeyboard(),
+    );
+    return null;
+  }
+
+  // ⚠️ Bog'lanish O'CHIRILMAYDI — arxivdan qaytarilsa (bu normal holat)
+  // qayta login qilish shart bo'lmasligi kerak (`staffFlowOpen` izohi).
+  if (!staffFlowOpen(tgUser)) {
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.STAFF_ACCESS_REVOKED,
+      { reply_markup: { remove_keyboard: true } },
+    );
+    return null;
+  }
+
+  return tgUser;
+};
+
+/**
+ * BOG'LANGAN O'QUVCHINI OLADI — `requireStaff` ning ko'zgusi.
+ *
+ * @returns {Promise<object|null>} tgUser yoki `null` (javob yuborilgan)
+ */
+const requireStudent = async (bot, msg) => {
+  const chatId = msg.chat.id;
+  const tgUser = await getTgUser(msg.from.id.toString());
+
+  if (!tgUser) {
+    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
+    return null;
+  }
+
+  // Yetim qator (`requireStaff` dagi bilan bir xil sabab)
+  if (!tgUser.person) {
+    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
+    return null;
+  }
+
+  if (tgUser.kind !== LINK_KIND.STUDENT || !tgUser.student) {
+    // Eski klaviaturadagi ota-ona tugmasi — endi xodim sifatida kirgan
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.SWITCHED_TO_STAFF,
+      await keyboardFor(tgUser),
+    );
+    return null;
+  }
+
+  return tgUser;
+};
+
+/** Xodim hodisasini yozadi. */
+const trackStaff = (tgUser, action, meta) =>
+  track({
+    telegramId: tgUser.telegramId,
+    userId: tgUser.person.id,
+    action: `${STAFF_ACTION}${action}`,
+    meta,
+  });
+
+/**
  * /start command handler
  */
 const handleStart = async (bot, msg) => {
@@ -92,6 +272,30 @@ const handleStart = async (bot, msg) => {
   // Check if already linked
   const existingTgUser = await getTgUser(telegramId);
 
+  // ── XODIM ──
+  if (staffFlowOpen(existingTgUser)) {
+    trackStaff(existingTgUser, "start");
+
+    const [roleLabel, keyboard] = await Promise.all([
+      staffService.getRoleLabel(existingTgUser.person),
+      keyboardFor(existingTgUser),
+    ]);
+
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.WELCOME_BACK_STAFF(
+        escapeMarkdown(fullNameOf(existingTgUser.person)),
+        escapeMarkdown(roleLabel),
+      ),
+      keyboard,
+    );
+    return;
+  }
+
+  // ── OTA-ONA ──
+  // `student` yetim qatorda `null` bo'ladi va shox ishlamaydi — pastda
+  // foydalanuvchi WELCOME bilan qayta login qilishga yuboriladi.
   if (existingTgUser && existingTgUser.student) {
     track({
       telegramId,
@@ -99,10 +303,7 @@ const handleStart = async (bot, msg) => {
       action: "bot.start",
     });
 
-    const studentName = escapeMarkdown(
-      existingTgUser.student.fullName ||
-        `${existingTgUser.student.firstName} ${existingTgUser.student.lastName || ""}`.trim()
-    );
+    const studentName = escapeMarkdown(fullNameOf(existingTgUser.student));
     const classNames = escapeMarkdown(
       existingTgUser.student.classes?.map((c) => c.name).join(", ") || "Noma'lum"
     );
@@ -111,6 +312,16 @@ const handleStart = async (bot, msg) => {
       `👋 Qaytib kelganingizdan xursandmiz!\n\n📚 O'quvchi: *${studentName}*\n🏫 Sinflar: *${classNames}*`,
       getMainKeyboard()
     );
+    return;
+  }
+
+  // Yopilgan xodim bog'lanishi — qayta login ham yordam bermaydi
+  // (`authenticateUser` arxivlangan hisobni kiritmaydi), shuning uchun
+  // WELCOME o'rniga sababni aytamiz.
+  if (existingTgUser?.kind === LINK_KIND.STAFF) {
+    await sendMessage(bot, chatId, TEXTS.STAFF_ACCESS_REVOKED, {
+      reply_markup: { remove_keyboard: true },
+    });
     return;
   }
 
@@ -160,21 +371,25 @@ const handlePassword = async (bot, msg, password) => {
   }
 
   try {
-    // Authentication
-    const authResult = await authenticateStudent(username, password);
+    // ⚠️ ROLDAN QAT'I NAZAR: tekshiruv faqat login/parol/faollik bo'yicha,
+    // "o'quvchimi?" degan rad etish OLIB TASHLANGAN.
+    const authResult = await authenticateUser(username, password);
 
     if (!authResult.success) {
-      let errorMessage = TEXTS.AUTH_FAILED;
-
-      if (authResult.error === "NOT_STUDENT") {
-        errorMessage = TEXTS.AUTH_STUDENT_ONLY;
-      } else if (authResult.error === "INACTIVE_USER") {
-        errorMessage = TEXTS.AUTH_INACTIVE_USER;
-      }
+      const errorMessage =
+        authResult.error === "INACTIVE_USER"
+          ? TEXTS.AUTH_INACTIVE_USER
+          : TEXTS.AUTH_FAILED;
 
       await sendMessage(bot, chatId, errorMessage, getStartKeyboard());
       return;
     }
+
+    const person = authResult.user;
+    const isStaffLogin = authResult.kind === LINK_KIND.STAFF;
+
+    // Oldingi bog'lanish turi — almashganini aytib qo'yish uchun
+    const previous = await getTgUser(msg.from.id.toString());
 
     // Link Telegram user
     const telegramUser = {
@@ -185,17 +400,24 @@ const handlePassword = async (bot, msg, password) => {
       username: msg.from.username,
     };
 
-    // `authResult.branch` — o'quvchi qaysi filialda ekani. `TgUser` o'sha
+    // `authResult.branch` — foydalanuvchi qaysi filialda ekani. `TgUser` o'sha
     // filial bazasiga, yo'naltirgich esa platformaga yoziladi.
     const linkResult = await linkTelegramUser(
       telegramUser,
-      authResult.user,
+      person,
       authResult.branch,
+      authResult.kind,
     );
 
     if (!linkResult.success) {
       if (linkResult.error === "ALREADY_LINKED") {
-        await sendMessage(bot, chatId, TEXTS.AUTH_ALREADY_LINKED, getMainKeyboard());
+        const tgUser = await getTgUser(msg.from.id.toString());
+        await sendMessage(
+          bot,
+          chatId,
+          TEXTS.AUTH_ALREADY_LINKED,
+          await keyboardFor(tgUser),
+        );
       } else {
         await sendMessage(bot, chatId, TEXTS.ERROR_GENERAL, getStartKeyboard());
       }
@@ -205,13 +427,7 @@ const handlePassword = async (bot, msg, password) => {
     // Successful link
     // Foydalanuvchi ismi/sinf nomi Markdown'ni buzmasligi uchun escape qilamiz -
     // aks holda AUTH_SUCCESS jimgina yuborilmay, bot "qotib qolgandek" ko'rinadi.
-    const student = authResult.user;
-    const studentName = escapeMarkdown(
-      student.fullName || `${student.firstName} ${student.lastName || ""}`.trim()
-    );
-    const classNames = escapeMarkdown(
-      student.classes?.map((c) => c.name).join(", ") || "Noma'lum"
-    );
+    const personName = escapeMarkdown(fullNameOf(person));
 
     // ⚠️ `runWithBranch` MAJBURIY va u aynan shu yerda kerak.
     //
@@ -226,19 +442,60 @@ const handlePassword = async (bot, msg, password) => {
     // o'sha yerga yozilgan), shuning uchun hodisani o'sha kontekstda
     // yozamiz.
     runWithBranch(authResult.branch, () =>
-      track({
-        telegramId: msg.from.id.toString(),
-        studentId: student.id,
-        action: "bot.link",
-      }),
+      track(
+        isStaffLogin
+          ? {
+              telegramId: msg.from.id.toString(),
+              userId: person.id,
+              action: `${STAFF_ACTION}link`,
+            }
+          : {
+              telegramId: msg.from.id.toString(),
+              studentId: person.id,
+              action: "bot.link",
+            },
+      ),
+    );
+
+    // ── XODIM ──
+    if (isStaffLogin) {
+      const [roleLabel, showLessons] = await Promise.all([
+        runWithBranch(authResult.branch, () =>
+          staffService.getRoleLabel(person),
+        ),
+        runWithBranch(authResult.branch, () => staffService.hasLessons(person)),
+      ]);
+
+      await sendMessage(
+        bot,
+        chatId,
+        TEXTS.AUTH_SUCCESS_STAFF(personName, escapeMarkdown(roleLabel)),
+        getStaffKeyboard(showLessons),
+      );
+
+      // Ota-onadan xodimga o'tdi — eski kuzatuv yopilganini aytamiz
+      if (previous?.kind === LINK_KIND.STUDENT) {
+        await sendMessage(bot, chatId, TEXTS.SWITCHED_TO_STAFF);
+      }
+      return;
+    }
+
+    // ── OTA-ONA ──
+    const classNames = escapeMarkdown(
+      person.classes?.map((c) => c.name).join(", ") || "Noma'lum"
     );
 
     await sendMessage(
       bot,
       chatId,
-      TEXTS.AUTH_SUCCESS(studentName, classNames),
+      TEXTS.AUTH_SUCCESS(personName, classNames),
       getMainKeyboard()
     );
+
+    // Xodimdan ota-onaga o'tdi — xodim menyusi yopilganini aytamiz
+    if (previous?.kind === LINK_KIND.STAFF) {
+      await sendMessage(bot, chatId, TEXTS.SWITCHED_TO_STUDENT);
+    }
   } catch (error) {
     // Kutilmagan xato bo'lsa ham foydalanuvchi javobsiz qolmasligi kerak
     console.error("Password handler error:", error);
@@ -248,22 +505,21 @@ const handlePassword = async (bot, msg, password) => {
   }
 };
 
+/* ══════════════════════════════════════════════════════════════════════
+   OTA-ONA OQIMI
+   ══════════════════════════════════════════════════════════════════════ */
+
 /**
  * Today's grades handler
  */
 const handleMyGrades = async (bot, msg) => {
   const chatId = msg.chat.id;
-  const telegramId = msg.from.id.toString();
 
-  const tgUser = await getTgUser(telegramId);
-
-  if (!tgUser) {
-    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
-    return;
-  }
+  const tgUser = await requireStudent(bot, msg);
+  if (!tgUser) return;
 
   track({
-    telegramId,
+    telegramId: tgUser.telegramId,
     studentId: tgUser.student.id,
     action: "bot.grades",
   });
@@ -282,7 +538,137 @@ const handleMyGrades = async (bot, msg) => {
 };
 
 /**
- * Settings handler
+ * Statistics handler
+ */
+const handleStatistics = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireStudent(bot, msg);
+  if (!tgUser) return;
+
+  track({
+    telegramId: tgUser.telegramId,
+    studentId: tgUser.student.id,
+    action: "bot.statistics",
+  });
+
+  await bot.sendMessage(chatId, TEXTS.STATISTICS_TEXT, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [{
+          text: TEXTS.BTN_WEB_APP,
+          web_app: { url: process.env.DASHBOARD_URL }
+        }],
+      ],
+    },
+  });
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   XODIM OQIMI
+
+   ⚠️ FAQAT O'ZINING MA'LUMOTI. Har bir so'rov `tgUser.person.id` bo'yicha
+   cheklangan, shuning uchun ruxsat tekshiruvi yo'q: xodim o'z davomatiga
+   va oyligiga har doim haqli. Boshqa odamning yoki filialning yig'ma
+   ko'rsatkichi botga CHIQMAYDI — u bo'lim darajasidagi ruxsatga bog'liq
+   (`server/src/utils/permissions.js`) va uni botda ikkinchi marta amalga
+   oshirish ruxsat tizimini ikkiga bo'lardi.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Xodimning bugungi davomati
+ */
+const handleStaffAttendance = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireStaff(bot, msg);
+  if (!tgUser) return;
+
+  trackStaff(tgUser, "attendance");
+
+  const data = await staffService.getAttendanceToday(tgUser.person);
+  await sendMessage(
+    bot,
+    chatId,
+    formatStaffAttendance(data),
+    await keyboardFor(tgUser),
+  );
+};
+
+/**
+ * Xodimning topshiriqlari
+ */
+const handleStaffTasks = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireStaff(bot, msg);
+  if (!tgUser) return;
+
+  trackStaff(tgUser, "tasks");
+
+  const data = await staffService.getTasks(tgUser.person);
+  await sendMessage(
+    bot,
+    chatId,
+    formatStaffTasks(data),
+    await keyboardFor(tgUser),
+  );
+};
+
+/**
+ * O'qituvchining bugungi darslari
+ */
+const handleStaffLessons = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireStaff(bot, msg);
+  if (!tgUser) return;
+
+  trackStaff(tgUser, "lessons");
+
+  const date = tashkentDay();
+  const data = await staffService.getLessonsToday(tgUser.person, date);
+
+  await sendMessage(
+    bot,
+    chatId,
+    formatStaffLessons(data, date),
+    await keyboardFor(tgUser),
+  );
+};
+
+/**
+ * Xodimning oyligi
+ */
+const handleStaffPayroll = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireStaff(bot, msg);
+  if (!tgUser) return;
+
+  trackStaff(tgUser, "payroll");
+
+  const data = await staffService.getPayroll(tgUser.person);
+  await sendMessage(
+    bot,
+    chatId,
+    formatStaffPayroll(data),
+    await keyboardFor(tgUser),
+  );
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   UMUMIY
+   ══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Settings handler — ikki oqim uchun ham.
+ *
+ * ⚠️ XODIMDA BILDIRISHNOMA TUGMASI YO'Q: `notificationsEnabled` faqat
+ * KUNLIK BAHO HISOBOTINI boshqaradi va u o'quvchiga bog'langan hisoblarga
+ * ketadi (`getActiveNotificationUsers`). Xodimga hisobot yuborilmaydi,
+ * ya'ni tugma hech narsani o'zgartirmas edi.
  */
 const handleSettings = async (bot, msg) => {
   const chatId = msg.chat.id;
@@ -290,12 +676,38 @@ const handleSettings = async (bot, msg) => {
 
   const tgUser = await getTgUser(telegramId);
 
-  if (!tgUser) {
+  // `!tgUser.person` — yetim qator (bog'langan odam o'chirilgan)
+  if (!tgUser || !tgUser.person) {
     await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
     return;
   }
 
-  track({ telegramId, studentId: tgUser.student.id, action: "bot.settings" });
+  // ── XODIM ──
+  if (tgUser.kind === LINK_KIND.STAFF) {
+    if (!staffFlowOpen(tgUser)) {
+      await sendMessage(bot, chatId, TEXTS.STAFF_ACCESS_REVOKED, {
+        reply_markup: { remove_keyboard: true },
+      });
+      return;
+    }
+
+    trackStaff(tgUser, "settings");
+
+    await bot.sendMessage(chatId, TEXTS.STAFF_SETTINGS_MENU, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [[{ text: TEXTS.BTN_UNLINK, callback_data: "unlink" }]],
+      },
+    });
+    return;
+  }
+
+  // ── OTA-ONA ──
+  track({
+    telegramId,
+    studentId: tgUser.student?.id,
+    action: "bot.settings",
+  });
 
   const notifStatus = tgUser.notificationsEnabled 
     ? TEXTS.NOTIFICATIONS_ON 
@@ -316,27 +728,6 @@ const handleSettings = async (bot, msg) => {
       },
     }
   );
-};
-
-/**
- * Statistics handler
- */
-const handleStatistics = async (bot, msg) => {
-  const chatId = msg.chat.id;
-
-  track({ telegramId: msg.from.id.toString(), action: "bot.statistics" });
-
-  await bot.sendMessage(chatId, TEXTS.STATISTICS_TEXT, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{
-          text: TEXTS.BTN_WEB_APP,
-          web_app: { url: process.env.DASHBOARD_URL }
-        }],
-      ],
-    },
-  });
 };
 
 /**
@@ -406,7 +797,13 @@ const handleCallbackQuery = async (bot, query) => {
     // ⚠️ Hodisa UZISHDAN OLDIN yoziladi: `unlinkTelegramUser` qatorni
     // o'chiradi va undan keyin `lastActivity` yangilanadigan joy
     // qolmaydi
-    track({ telegramId, action: "bot.unlink" });
+    const tgUser = await getTgUser(telegramId);
+
+    if (tgUser?.kind === LINK_KIND.STAFF && tgUser.person) {
+      trackStaff(tgUser, "unlink");
+    } else {
+      track({ telegramId, action: "bot.unlink" });
+    }
 
     await unlinkTelegramUser(telegramId);
     await bot.editMessageText(
@@ -421,7 +818,13 @@ const handleCallbackQuery = async (bot, query) => {
 
   if (data === "cancel_unlink") {
     await bot.deleteMessage(chatId, query.message.message_id);
-    await sendMessage(bot, chatId, TEXTS.UNLINK_CANCELLED, getMainKeyboard());
+    const tgUser = await getTgUser(telegramId);
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.UNLINK_CANCELLED,
+      await keyboardFor(tgUser),
+    );
     return;
   }
 };
@@ -439,28 +842,11 @@ const handleMessage = async (bot, msg) => {
     return;
   }
 
-  // Check button texts
-  if (text === TEXTS.START_BUTTON) {
-    await handleStartButton(bot, msg);
-    return;
-  }
-
-  if (text === TEXTS.BTN_MY_GRADES) {
-    await handleMyGrades(bot, msg);
-    return;
-  }
-
-  if (text === TEXTS.BTN_SETTINGS) {
-    await handleSettings(bot, msg);
-    return;
-  }
-
-  if (text === TEXTS.BTN_STATISTICS) {
-    await handleStatistics(bot, msg);
-    return;
-  }
-
-  // Process message based on state
+  // ⚠️ HOLAT TUGMA MATNIDAN OLDIN TEKSHIRILADI. Login oqimida odam
+  // ISTALGAN satrni kiritadi va u tasodifan tugma matniga teng
+  // bo'lishi mumkin ("⚙️ Sozlamalar" ni nusxalab qo'yish kifoya):
+  // teskari tartibda bot parol so'rab turib menyuga o'tib ketardi va
+  // kiritilgan satr parol sifatida HECH QAYERDA ishlatilmay qolardi.
   const userState = getUserState(chatId);
 
   if (userState.state === STATES.WAITING_USERNAME) {
@@ -473,7 +859,51 @@ const handleMessage = async (bot, msg) => {
     return;
   }
 
-  // If no state, suggest start
+  // Check button texts
+  if (text === TEXTS.START_BUTTON) {
+    await handleStartButton(bot, msg);
+    return;
+  }
+
+  // ── Ota-ona tugmalari ──
+  if (text === TEXTS.BTN_MY_GRADES) {
+    await handleMyGrades(bot, msg);
+    return;
+  }
+
+  if (text === TEXTS.BTN_STATISTICS) {
+    await handleStatistics(bot, msg);
+    return;
+  }
+
+  // ── Xodim tugmalari ──
+  if (text === TEXTS.BTN_STAFF_ATTENDANCE) {
+    await handleStaffAttendance(bot, msg);
+    return;
+  }
+
+  if (text === TEXTS.BTN_STAFF_TASKS) {
+    await handleStaffTasks(bot, msg);
+    return;
+  }
+
+  if (text === TEXTS.BTN_STAFF_LESSONS) {
+    await handleStaffLessons(bot, msg);
+    return;
+  }
+
+  if (text === TEXTS.BTN_STAFF_PAYROLL) {
+    await handleStaffPayroll(bot, msg);
+    return;
+  }
+
+  // ── Ikki oqimda ham bir xil ──
+  if (text === TEXTS.BTN_SETTINGS) {
+    await handleSettings(bot, msg);
+    return;
+  }
+
+  // Tanilmagan matn — bog'lanmagan bo'lsa login taklif qilamiz
   const tgUser = await getTgUser(msg.from.id.toString());
   if (!tgUser) {
     await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
@@ -496,8 +926,8 @@ const registerHandlers = (bot) => {
    *
    * Telegram ID → qaysi filial (platformadagi yo'naltirgich), so'ng butun
    * handler o'sha kontekstda bajariladi. Shundan keyin `getStudentGradesByDate`,
-   * `toggleNotifications` kabi service chaqiruvlari to'g'ri filial bazasiga
-   * boradi — ularning o'zini o'zgartirish shart emas.
+   * `toggleNotifications`, `staff.service` dagi so'rovlar to'g'ri filial
+   * bazasiga boradi — ularning o'zini o'zgartirish shart emas.
    *
    * Hali bog'lanmagan foydalanuvchida filial YO'Q: login oqimi
    * (`handleUsername`/`handlePassword`) filialni username bo'yicha o'zi
