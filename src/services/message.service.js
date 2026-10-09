@@ -22,6 +22,15 @@ const MONTHS_UZ = [
 ];
 
 /**
+ * Oy nomlari BOSH HARF bilan — oy yorlig'i uchun ("Yanvar, 2026").
+ * Serverdagi `MONTHS_UZ_CAP` bilan bir xil hosila.
+ */
+const MONTHS_UZ_CAP = MONTHS_UZ.map((m) => m[0].toUpperCase() + m.slice(1));
+
+/** Toshkent (UTC+5) siljishi — instantni devor-soatiga surish uchun. */
+const TASHKENT_OFFSET_MS = 5 * 3600000;
+
+/**
  * Kanonik sana: "21-may, 2025".
  *
  * ⚠️ Tizimda sana FAQAT shu ko'rinishda ko'rsatiladi — ota-ona botdan
@@ -29,12 +38,75 @@ const MONTHS_UZ = [
  * To'liq qoida: `.claude/rules/dates.md`.
  *
  * @param {Date|string|number} date
+ * @param {{utc?: boolean}} [options] `utc: true` — qiymat UTC YARIM TUNIDA
+ *   saqlangan KUN (`attendances.date`, `grades.date`): u devor-soatiga
+ *   surilmaydi, aks holda bot UTC'dan orqadagi zonada ishlaganda sana bir
+ *   kunga siljirdi. Serverdagi `formatDateUz(v, { utc: true })` bilan ayni
+ *   qoida.
  * @returns {string}
  */
-const formatDate = (date) => {
+const formatDate = (date, { utc = false } = {}) => {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getDate()}-${MONTHS_UZ[d.getMonth()]}, ${d.getFullYear()}`;
+  if (!utc) {
+    return `${d.getDate()}-${MONTHS_UZ[d.getMonth()]}, ${d.getFullYear()}`;
+  }
+  return `${d.getUTCDate()}-${MONTHS_UZ[d.getUTCMonth()]}, ${d.getUTCFullYear()}`;
+};
+
+/**
+ * Kanonik vaqt: "14:30" — TOSHKENT devor-soati.
+ *
+ * Serverdagi `formatTimeUz` bilan ayni hisob: instant Toshkent siljishiga
+ * suriladi, so'ng `getUTC*` bilan o'qiladi. `toLocaleTimeString`
+ * ISHLATILMAYDI — natija Node ICU qurilishiga bog'liq bo'lib qolardi
+ * (`dates.md` bilan bir xil sabab).
+ *
+ * @param {Date|string|number|null} value
+ * @param {{fallback?: string}} [options]
+ * @returns {string}
+ */
+const formatTime = (value, { fallback = "—" } = {}) => {
+  if (value === null || value === undefined || value === "") return fallback;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return fallback;
+
+  const shifted = new Date(d.getTime() + TASHKENT_OFFSET_MS);
+  const hours = String(shifted.getUTCHours()).padStart(2, "0");
+  const minutes = String(shifted.getUTCMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * Oy yorlig'i: 202601 → "Yanvar, 2026".
+ * Serverdagi `month.helpers#formatMonthKey` bilan bir xil.
+ *
+ * @param {number} monthKey - YYYYMM
+ * @returns {string}
+ */
+const formatMonth = (monthKey) => {
+  if (monthKey == null) return "";
+  const name = MONTHS_UZ_CAP[(monthKey % 100) - 1];
+  return name ? `${name}, ${Math.trunc(monthKey / 100)}` : String(monthKey);
+};
+
+/**
+ * Summa ODAM o'qiydigan matnda: "6 741 000 so'm" (butun so'mgacha).
+ *
+ * Serverdagi `money.helpers#formatSum` ning ko'zgusi — bot va panel bitta
+ * oylikni boshqa-boshqa ko'rsatmasligi kerak. `toLocaleString` siz: ajratgich
+ * Node ICU qurilishiga bog'liq bo'lib qolmasin.
+ *
+ * @param {*} value - Prisma Decimal, son yoki satr
+ * @returns {string}
+ */
+const formatSum = (value) => {
+  const n = Number(value ?? 0);
+  const safe = Number.isFinite(n) ? n : 0;
+  const grouped = Math.round(safe)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${grouped} so'm`;
 };
 
 /**
@@ -189,6 +261,225 @@ const formatDailyReport = (reportData) => {
   return message;
 };
 
+/* ══════════════════════════════════════════════════════════════════════
+   XODIM XABARLARI
+
+   ⚠️ HAR BIR DINAMIK QIYMAT `escapeMarkdown` DAN O'TADI. Topshiriq
+   sarlavhasi, sinf/fan nomi, lavozim va sabab matnini ODAM yozadi va
+   ularda `_ * [ \`` bo'lishi mumkin: Telegram `parse_mode: "Markdown"`
+   bilan butun xabarni RAD ETADI, ya'ni bot jimgina "qotib qolgandek"
+   ko'rinadi. O'quvchi oqimida bu bir marta boshdan kechirilgan
+   (`AUTH_SUCCESS` izohi).
+   ══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Xodimning bugungi davomati.
+ *
+ * @param {{record: object|null, workTime: object|null, date: Date}} data
+ * @returns {string}
+ */
+const formatStaffAttendance = ({ record, workTime, date }) => {
+  // ⚠️ `utc: true` — `attendances.date` Toshkent kunini UTC yarim tunida
+  // saqlaydi (`formatDate` izohi).
+  let message = TEXTS.STAFF_ATTENDANCE_HEADER(formatDate(date, { utc: true }));
+
+  if (workTime) {
+    message += `${TEXTS.STAFF_WORK_TIME(workTime.startTime, workTime.endTime)}\n`;
+  }
+
+  if (!record) {
+    return `${message}\n${TEXTS.STAFF_ATTENDANCE_NONE}`;
+  }
+
+  message += "\n";
+  message +=
+    (TEXTS.STAFF_ATTENDANCE_STATUS[record.status] ||
+      TEXTS.STAFF_ATTENDANCE_STATUS.present) + "\n";
+
+  if (record.checkIn) {
+    message += `${TEXTS.STAFF_CHECK_IN(formatTime(record.checkIn))}\n`;
+  }
+
+  if (record.isLate && record.lateMinutes > 0) {
+    message += `${TEXTS.STAFF_LATE_MINUTES(record.lateMinutes)}\n`;
+  }
+
+  // ⚠️ Kelgan, lekin hali ketmagan holat ALOHIDA ko'rsatiladi: bo'sh
+  // qoldirilsa xodim "ketishim yozilmaganmi?" deb o'ylab qolardi.
+  if (record.checkOut) {
+    message += `${TEXTS.STAFF_CHECK_OUT(formatTime(record.checkOut))}\n`;
+  } else if (record.checkIn) {
+    message += `${TEXTS.STAFF_CHECK_OUT_PENDING}\n`;
+  }
+
+  if (record.isEarlyOut && record.earlyOutMinutes > 0) {
+    message += `${TEXTS.STAFF_EARLY_OUT_MINUTES(record.earlyOutMinutes)}\n`;
+  }
+
+  if (record.excuseReason) {
+    message += `${TEXTS.STAFF_EXCUSE_REASON(escapeMarkdown(record.excuseReason))}\n`;
+  }
+
+  return message.trimEnd();
+};
+
+/**
+ * Xodimning topshiriqlari.
+ *
+ * @param {{open: Array, reviewCount: number, overdue: Array, penaltyPoints: number}} data
+ * @returns {string}
+ */
+const formatStaffTasks = ({ open, reviewCount, overdue, penaltyPoints }) => {
+  let message = TEXTS.STAFF_TASKS_HEADER;
+
+  if (open.length === 0) {
+    message += `\n${TEXTS.STAFF_TASKS_EMPTY}`;
+  } else {
+    const now = new Date();
+    message += "\n";
+
+    for (const task of open) {
+      const isOverdue = task.dueDate < now;
+      message +=
+        TEXTS.STAFF_TASK_LINE(
+          escapeMarkdown(task.title),
+          // Muddat — INSTANT (`due_date` timestamp), ya'ni `utc` bayrog'i
+          // qo'yilmaydi va Toshkent devor-soatiga suriladi.
+          `${formatDate(task.dueDate)} ${formatTime(task.dueDate)}`,
+          isOverdue,
+        ) + "\n";
+    }
+
+    if (overdue.length > 0) {
+      message += TEXTS.STAFF_TASKS_OVERDUE_WARN(overdue.length) + "\n";
+    }
+  }
+
+  if (reviewCount > 0) {
+    message += TEXTS.STAFF_TASKS_REVIEW(reviewCount) + "\n";
+  }
+
+  if (penaltyPoints > 0) {
+    message += TEXTS.STAFF_PENALTY_POINTS(penaltyPoints) + "\n";
+  }
+
+  return message.trimEnd();
+};
+
+/**
+ * O'qituvchining bugungi darslari.
+ *
+ * @param {{dayName: string, lessons: Array, gradedCount: number}} data
+ * @param {Date} date
+ * @returns {string}
+ */
+const formatStaffLessons = ({ dayName, lessons, gradedCount }, date) => {
+  let message = TEXTS.STAFF_LESSONS_HEADER(
+    dayName,
+    formatDate(date, { utc: true }),
+  );
+
+  if (lessons.length === 0) {
+    return `${message}\n${TEXTS.STAFF_LESSONS_EMPTY}`;
+  }
+
+  message += "\n";
+
+  for (const lesson of lessons) {
+    // `startTime`/`endTime` — jadvaldagi "HH:MM" SATRLARI, instant emas:
+    // ular formatlanmaydi, shunchaki ko'rsatiladi.
+    const timeLabel =
+      lesson.startTime && lesson.endTime
+        ? `${lesson.startTime} – ${lesson.endTime}`
+        : "";
+
+    message +=
+      TEXTS.STAFF_LESSON_LINE(
+        lesson.order,
+        escapeMarkdown(lesson.className),
+        escapeMarkdown(lesson.subjectName),
+        timeLabel,
+        lesson.graded,
+      ) + "\n";
+  }
+
+  message += TEXTS.STAFF_LESSONS_SUMMARY(gradedCount, lessons.length);
+
+  return message.trimEnd();
+};
+
+/**
+ * Xodimning oyligi.
+ *
+ * @param {{entry: object|null, isCurrentMonth: boolean, monthKey: number}} data
+ * @returns {string}
+ */
+const formatStaffPayroll = ({ entry, isCurrentMonth, monthKey }) => {
+  if (!entry) {
+    return `${TEXTS.STAFF_PAYROLL_HEADER(formatMonth(monthKey))}\n${TEXTS.STAFF_PAYROLL_EMPTY}`;
+  }
+
+  let message = TEXTS.STAFF_PAYROLL_HEADER(formatMonth(entry.month));
+
+  if (entry.positionName) {
+    message += `${TEXTS.STAFF_PAYROLL_POSITION(escapeMarkdown(entry.positionName))}\n`;
+  }
+  if (entry.categoryName) {
+    message += `${TEXTS.STAFF_PAYROLL_CATEGORY(escapeMarkdown(entry.categoryName))}\n`;
+  }
+
+  message += "\n";
+
+  // ⚠️ BEKOR QILINGAN QATOR — summalar o'z o'rnida turadi (tarix
+  // o'chirilmaydi), lekin ularni "men shuncha olaman" deb o'qimasligi uchun
+  // eng tepada aytiladi.
+  if (entry.cancelledAt) {
+    message += `${TEXTS.STAFF_PAYROLL_CANCELLED}\n\n`;
+  }
+
+  const total = Number(entry.amount ?? 0);
+  const paid = Number(entry.paidAmount ?? 0);
+
+  message += `${TEXTS.STAFF_PAYROLL_TOTAL(formatSum(total))}\n`;
+  message += `${TEXTS.STAFF_PAYROLL_PAID(formatSum(paid))}\n`;
+
+  const remaining = total - paid;
+  if (remaining > 0) {
+    message += `${TEXTS.STAFF_PAYROLL_REMAINING(formatSum(remaining))}\n`;
+  }
+
+  message +=
+    (TEXTS.STAFF_PAYROLL_STATUS[entry.status] ||
+      TEXTS.STAFF_PAYROLL_STATUS.unpaid) + "\n";
+
+  // ── Tarkibi — faqat NOLDAN FARQLI qismlar ──
+  const parts = [];
+  const fixed = Number(entry.fixedAmount ?? 0);
+  const kpi = Number(entry.kpiAmount ?? 0);
+  const allowance = Number(entry.allowanceAmount ?? 0);
+  const deduction = Number(entry.deductionAmount ?? 0);
+  const absence = Number(entry.absenceAmount ?? 0);
+  const suspended = Number(entry.suspendedAmount ?? 0);
+  const hours = Number(entry.lessonHours ?? 0);
+
+  if (fixed > 0) parts.push(TEXTS.STAFF_PAYROLL_FIXED(formatSum(fixed)));
+  if (kpi > 0) parts.push(TEXTS.STAFF_PAYROLL_KPI(formatSum(kpi), hours || null));
+  if (allowance > 0) parts.push(TEXTS.STAFF_PAYROLL_ALLOWANCE(formatSum(allowance)));
+  if (absence > 0) parts.push(TEXTS.STAFF_PAYROLL_ABSENCE(formatSum(absence)));
+  if (suspended > 0) parts.push(TEXTS.STAFF_PAYROLL_SUSPENDED(formatSum(suspended)));
+  if (deduction > 0) parts.push(TEXTS.STAFF_PAYROLL_DEDUCTION(formatSum(deduction)));
+
+  if (parts.length > 0) {
+    message += `${TEXTS.STAFF_PAYROLL_BREAKDOWN_HEADER}\n${parts.join("\n")}\n`;
+  }
+
+  if (!isCurrentMonth) {
+    message += TEXTS.STAFF_PAYROLL_NOT_CURRENT;
+  }
+
+  return message.trimEnd();
+};
+
 /**
  * Xabar yuborish (rate limit bilan)
  * @param {Object} bot - Telegram bot instance
@@ -320,8 +611,15 @@ const sendDailyReports = async (bot, reportDataList) => {
 
 module.exports = {
   formatDate,
+  formatTime,
+  formatMonth,
+  formatSum,
   escapeMarkdown,
   formatDailyReport,
+  formatStaffAttendance,
+  formatStaffTasks,
+  formatStaffLessons,
+  formatStaffPayroll,
   sendMessage,
   sendBatchMessages,
   sendDailyReports,
