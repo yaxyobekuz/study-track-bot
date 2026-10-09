@@ -29,6 +29,7 @@ const {
   LINK_KIND,
 } = require("../services");
 const staffService = require("../services/staff.service");
+const issueService = require("../services/issue.service");
 const { runWithBranch } = require("../config/branch");
 const {
   formatDailyReport,
@@ -50,7 +51,34 @@ const STATES = {
   WAITING_USERNAME: "WAITING_USERNAME",
   WAITING_PASSWORD: "WAITING_PASSWORD",
   WAITING_UNLINK_CONFIRM: "WAITING_UNLINK_CONFIRM",
+  // Muammo yuborish: kategoriya tanlash → matn yozish
+  WAITING_ISSUE_CATEGORY: "WAITING_ISSUE_CATEGORY",
+  WAITING_ISSUE_BODY: "WAITING_ISSUE_BODY",
 };
+
+/** Muammo oqimining holatlari — menyu tugmasi bosilsa tozalanadi. */
+const ISSUE_STATES = new Set([
+  STATES.WAITING_ISSUE_CATEGORY,
+  STATES.WAITING_ISSUE_BODY,
+]);
+
+/**
+ * BARCHA MENYU TUGMALARI — "odam oqimdan chiqib ketdimi" degan savol uchun.
+ *
+ * ⚠️ `BTN_ISSUE_CANCEL` BU RO'YXATDA YO'Q: u menyu tugmasi emas, muammo
+ * oqimining o'z tugmasi va uni oqim handler'larining o'zi qabul qiladi.
+ */
+const MENU_BUTTONS = new Set([
+  TEXTS.START_BUTTON,
+  TEXTS.BTN_MY_GRADES,
+  TEXTS.BTN_STATISTICS,
+  TEXTS.BTN_STAFF_ATTENDANCE,
+  TEXTS.BTN_STAFF_TASKS,
+  TEXTS.BTN_STAFF_LESSONS,
+  TEXTS.BTN_STAFF_PAYROLL,
+  TEXTS.BTN_SETTINGS,
+  TEXTS.BTN_ISSUE,
+]);
 
 /**
  * XODIM HODISALARI PREFIKSI — serverdagi `activityDashboard.service.js`
@@ -71,6 +99,7 @@ const getMainKeyboard = () => ({
     keyboard: [
       [{ text: TEXTS.BTN_MY_GRADES }],
       [{ text: TEXTS.BTN_SETTINGS }, { text: TEXTS.BTN_STATISTICS }],
+      [{ text: TEXTS.BTN_ISSUE }],
     ],
     resize_keyboard: true,
   },
@@ -100,8 +129,44 @@ const getStaffKeyboard = (showLessons = false) => {
     { text: TEXTS.BTN_SETTINGS },
   ]);
 
+  keyboard.push([{ text: TEXTS.BTN_ISSUE }]);
+
   return { reply_markup: { keyboard, resize_keyboard: true } };
 };
+
+/**
+ * MUAMMO OQIMINING KLAVIATURASI — faol kategoriyalar, ikkitadan qatorda.
+ *
+ * ⚠️ TUGMA MATNI — KATEGORIYA NOMINING O'ZI. Telegram'dagi oddiy
+ * klaviatura `callback_data` bermaydi: javob sifatida faqat matn qaytadi
+ * va kategoriya shu nom bo'yicha topiladi (`issue.service#
+ * findActiveCategoryByName`).
+ *
+ * @param {Array<{id: string, name: string}>} categories
+ */
+const getIssueCategoryKeyboard = (categories) => {
+  const keyboard = [];
+  for (let i = 0; i < categories.length; i += 2) {
+    keyboard.push(categories.slice(i, i + 2).map((c) => ({ text: c.name })));
+  }
+  keyboard.push([{ text: TEXTS.BTN_ISSUE_CANCEL }]);
+
+  return { reply_markup: { keyboard, resize_keyboard: true } };
+};
+
+/**
+ * Matn yozilayotganda — faqat "bekor qilish".
+ *
+ * ⚠️ MENYU TUGMALARI OLIB TASHLANADI: ular ko'rinib turgan bo'lsa odam
+ * bexosdan bosib yuborardi va yozgan matni yo'qolardi. Menyu bosilsa
+ * oqim baribir tashlab ketilgan deb hisoblanadi (`handleMessage`).
+ */
+const getIssueCancelKeyboard = () => ({
+  reply_markup: {
+    keyboard: [[{ text: TEXTS.BTN_ISSUE_CANCEL }]],
+    resize_keyboard: true,
+  },
+});
 
 const getStartKeyboard = () => ({
   reply_markup: {
@@ -253,6 +318,36 @@ const requireStudent = async (bot, msg) => {
   return tgUser;
 };
 
+/**
+ * BOG'LANGAN ODAMNI OLADI — TURIDAN QAT'I NAZAR.
+ *
+ * `requireStaff` / `requireStudent` ning uchinchisi: muammo yuborish
+ * IKKI OQIMDA HAM bir xil ishlaydi, shuning uchun turni tekshirmaydi.
+ * Tekshiriladigan narsa faqat "bog'langanmi va hisobi ochiqmi".
+ *
+ * @returns {Promise<object|null>} tgUser yoki `null` (javob yuborilgan)
+ */
+const requireLinked = async (bot, msg) => {
+  const chatId = msg.chat.id;
+  const tgUser = await getTgUser(msg.from.id.toString());
+
+  // `!tgUser.person` — yetim qator (bog'langan odam o'chirilgan)
+  if (!tgUser || !tgUser.person) {
+    await sendMessage(bot, chatId, TEXTS.ERROR_NOT_LINKED, getStartKeyboard());
+    return null;
+  }
+
+  // Yopilgan xodim hisobi — `requireStaff` dagi bilan ayni qoida
+  if (tgUser.kind === LINK_KIND.STAFF && !staffFlowOpen(tgUser)) {
+    await sendMessage(bot, chatId, TEXTS.STAFF_ACCESS_REVOKED, {
+      reply_markup: { remove_keyboard: true },
+    });
+    return null;
+  }
+
+  return tgUser;
+};
+
 /** Xodim hodisasini yozadi. */
 const trackStaff = (tgUser, action, meta) =>
   track({
@@ -261,6 +356,25 @@ const trackStaff = (tgUser, action, meta) =>
     action: `${STAFF_ACTION}${action}`,
     meta,
   });
+
+/**
+ * Muammo hodisasini yozadi — oqimga mos prefiks bilan.
+ *
+ * ⚠️ OTA-ONADA `studentId`, XODIMDA `userId`. Ikkisi boshqa-boshqa
+ * ma'noda (`activity.service#record`): birinchisi "hodisa qaysi o'quvchi
+ * haqida", ikkinchisi "kim qildi". Xodim hodisasiga `studentId` yozilsa
+ * panelda ota-ona qamrovi ko'rsatkichi buzilardi.
+ */
+const trackIssue = (tgUser, meta) => {
+  if (tgUser.kind === LINK_KIND.STAFF) return trackStaff(tgUser, "issue", meta);
+
+  return track({
+    telegramId: tgUser.telegramId,
+    studentId: tgUser.student?.id,
+    action: "bot.issue",
+    meta,
+  });
+};
 
 /**
  * /start command handler
@@ -659,6 +773,186 @@ const handleStaffPayroll = async (bot, msg) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
+   MUAMMO YUBORISH — IKKI OQIMDA HAM BIR XIL
+
+   Ikki qadam: KATEGORIYA tanlanadi (oddiy klaviatura, faqat faol
+   kategoriyalar) → matn yoziladi. Kategoriyalar admin panelda sozlanadi,
+   botda yaratilmaydi.
+
+   ⚠️ TURI TEKSHIRILMAYDI (`requireLinked`): xodim ham, ota-ona ham
+   muammo yuboradi va oqim bir xil. Farq faqat hodisa prefiksida
+   (`trackIssue`) va yakunda qaytariladigan klaviaturada.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/** Oqimdan chiqish — holat tozalanadi va o'z menyusi qaytariladi. */
+const cancelIssue = async (bot, msg) => {
+  const chatId = msg.chat.id;
+  clearUserState(chatId);
+
+  const tgUser = await getTgUser(msg.from.id.toString());
+  await sendMessage(
+    bot,
+    chatId,
+    TEXTS.ISSUE_CANCELLED,
+    await keyboardFor(tgUser),
+  );
+};
+
+/**
+ * 1-qadam: kategoriya so'raladi.
+ */
+const handleIssueStart = async (bot, msg) => {
+  const chatId = msg.chat.id;
+
+  const tgUser = await requireLinked(bot, msg);
+  if (!tgUser) return;
+
+  const categories = await issueService.getActiveCategories();
+
+  // ⚠️ KATEGORIYA YO'Q — oqim BOSHLANMAYDI. Bo'sh klaviatura bilan
+  // "matnni yozing" deyish muammoni kategoriyasiz qoldirardi
+  // (`issues.category_id` MAJBURIY).
+  if (!categories.length) {
+    clearUserState(chatId);
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.ISSUE_NO_CATEGORIES,
+      await keyboardFor(tgUser),
+    );
+    return;
+  }
+
+  setUserState(chatId, { state: STATES.WAITING_ISSUE_CATEGORY });
+  await sendMessage(
+    bot,
+    chatId,
+    TEXTS.ISSUE_PICK_CATEGORY,
+    getIssueCategoryKeyboard(categories),
+  );
+};
+
+/**
+ * 2-qadam: tanlangan kategoriya qabul qilinadi.
+ */
+const handleIssueCategory = async (bot, msg, text) => {
+  const chatId = msg.chat.id;
+
+  if (text === TEXTS.BTN_ISSUE_CANCEL) {
+    await cancelIssue(bot, msg);
+    return;
+  }
+
+  const tgUser = await requireLinked(bot, msg);
+  if (!tgUser) {
+    clearUserState(chatId);
+    return;
+  }
+
+  // ⚠️ KLAVIATURA MIJOZDA QOLADI: kategoriya shu orada o'chirilgan
+  // bo'lishi mumkin va eski tugma baribir bosiladi.
+  const category = await issueService.findActiveCategoryByName(text);
+
+  if (!category) {
+    const categories = await issueService.getActiveCategories();
+
+    if (!categories.length) {
+      clearUserState(chatId);
+      await sendMessage(
+        bot,
+        chatId,
+        TEXTS.ISSUE_NO_CATEGORIES,
+        await keyboardFor(tgUser),
+      );
+      return;
+    }
+
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.ISSUE_CATEGORY_UNKNOWN,
+      getIssueCategoryKeyboard(categories),
+    );
+    return;
+  }
+
+  setUserState(chatId, {
+    state: STATES.WAITING_ISSUE_BODY,
+    categoryId: category.id,
+    categoryName: category.name,
+  });
+
+  await sendMessage(
+    bot,
+    chatId,
+    TEXTS.ISSUE_ENTER_BODY(escapeMarkdown(category.name)),
+    getIssueCancelKeyboard(),
+  );
+};
+
+/**
+ * 3-qadam: matn qabul qilinadi va muammo saqlanadi.
+ */
+const handleIssueBody = async (bot, msg, text) => {
+  const chatId = msg.chat.id;
+  const { categoryId, categoryName } = getUserState(chatId);
+
+  if (text === TEXTS.BTN_ISSUE_CANCEL) {
+    await cancelIssue(bot, msg);
+    return;
+  }
+
+  const tgUser = await requireLinked(bot, msg);
+  if (!tgUser) {
+    clearUserState(chatId);
+    return;
+  }
+
+  // ⚠️ XATOda HOLAT SAQLANADI — odam qayta yozishi kerak, oqim boshidan
+  // boshlanmaydi: kategoriyani ikkinchi marta tanlashga majburlash
+  // yozilgan matnni ham yo'qotardi.
+  const check = issueService.validateBody(text);
+  if (!check.ok) {
+    await sendMessage(
+      bot,
+      chatId,
+      check.error === "TOO_SHORT"
+        ? TEXTS.ISSUE_TOO_SHORT(issueService.BODY_MIN)
+        : TEXTS.ISSUE_TOO_LONG(issueService.BODY_MAX),
+      getIssueCancelKeyboard(),
+    );
+    return;
+  }
+
+  const issue = await issueService.createIssue({
+    tgUser,
+    categoryId,
+    body: check.body,
+  });
+
+  clearUserState(chatId);
+
+  if (!issue) {
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.ERROR_GENERAL,
+      await keyboardFor(tgUser),
+    );
+    return;
+  }
+
+  trackIssue(tgUser, { issueId: issue.id, categoryId });
+
+  await sendMessage(
+    bot,
+    chatId,
+    TEXTS.ISSUE_SENT(escapeMarkdown(issue.category?.name || categoryName)),
+    await keyboardFor(tgUser),
+  );
+};
+
+/* ══════════════════════════════════════════════════════════════════════
    UMUMIY
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -859,6 +1153,19 @@ const handleMessage = async (bot, msg) => {
     return;
   }
 
+  // ⚠️ MUAMMO HOLATI TUGMALARDAN KEYIN TEKSHIRILADI — login holatlarining
+  // TESKARISI, va bu ataylab. Login oqimida odam ISTALGAN satrni kiritadi
+  // (parol tugma matniga teng bo'lishi mumkin), muammo oqimida esa menyu
+  // tugmasini bosish "oqimni tashlab ketdim" degani: aks holda bosilgan
+  // tugmaning MATNI muammo mazmuni bo'lib ketardi ("📨 Muammo yuborish"
+  // minimal uzunlikdan oshadi va jimgina saqlanib qolardi).
+  //
+  // Tugma bosilgan — yarim qolgan oqim tozalanadi, aks holda keyingi
+  // yozilgan satr kutilmaganda muammo matni bo'lib ketardi.
+  if (MENU_BUTTONS.has(text) && ISSUE_STATES.has(userState.state)) {
+    clearUserState(chatId);
+  }
+
   // Check button texts
   if (text === TEXTS.START_BUTTON) {
     await handleStartButton(bot, msg);
@@ -900,6 +1207,22 @@ const handleMessage = async (bot, msg) => {
   // ── Ikki oqimda ham bir xil ──
   if (text === TEXTS.BTN_SETTINGS) {
     await handleSettings(bot, msg);
+    return;
+  }
+
+  if (text === TEXTS.BTN_ISSUE) {
+    await handleIssueStart(bot, msg);
+    return;
+  }
+
+  // ── Muammo oqimi ──
+  if (userState.state === STATES.WAITING_ISSUE_CATEGORY) {
+    await handleIssueCategory(bot, msg, text);
+    return;
+  }
+
+  if (userState.state === STATES.WAITING_ISSUE_BODY) {
+    await handleIssueBody(bot, msg, text);
     return;
   }
 

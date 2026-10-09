@@ -397,3 +397,90 @@ model ActivityEvent {
   @@index([actorKey, day])
   @@map("activity_events")
 }
+
+// ─────────────────────────────────────────────
+// MUAMMOLAR (bot → ma'muriyat)
+// ─────────────────────────────────────────────
+//
+// ⚠️ BU YERDA BOT YOZADI — `staff.service.js` dagi "faqat o'qish"
+// qoidasidan ATAYLAB istisno, lekin u qoidaga qarshi emas. Qoida
+// SERVERDAGI BIZNES QOIDASINI botda takrorlamaslik haqida (davomat
+// belgilash, topshiriq yakunlash, oylik hisoblash — ularning hammasida
+// serverda qoida bor va bot nusxa qilsa ikkita haqiqat manbasi
+// paydo bo'lardi). Muammo yaratishda esa serverda hech qanday qoida YO'Q:
+// server muammo YARATMAYDI, faqat ko'rib chiqadi (`status`, `reply`).
+// Ya'ni ikki tomon bir ustunga yozmaydi va nusxalanadigan mantiq yo'q.
+//
+// ⚠️ `Issue` — `AUTO_ID_MODELS` DA (`src/config/branch.js`). Bo'lmasa
+// `id` bo'sh ketadi va INSERT yiqiladi: jadvalda `@default` yo'q, ID
+// 24-hex ObjectId bo'lishi shart.
+//
+// To'liq izoh: server/prisma/schema.prisma dagi ayni modellar.
+
+/** Ko'rib chiqish holati — faqat PANEL o'zgartiradi, bot o'qimaydi ham. */
+enum IssueStatus {
+  new
+  in_review
+  resolved
+  rejected
+}
+
+/**
+ * MUAMMO KATEGORIYASI — botdagi klaviatura shundan chiziladi.
+ *
+ * ⚠️ BOT FAQAT O'QIYDI va faqat `isActive = true` ni ko'rsatadi:
+ * kategoriyalar admin panelda sozlanadi, botda yaratilmaydi.
+ *
+ * ⚠️ USTUNLAR TO'LIQ — jadvalda nomi va holatidan boshqa hech narsa yo'q.
+ */
+model IssueCategory {
+  id        String   @id @db.Char(24)
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy String?  @map("created_by") @db.Char(24)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  issues Issue[]
+
+  @@index([isActive, name])
+  @@map("issue_categories")
+}
+
+/**
+ * BOTDAN YUBORILGAN MUAMMO.
+ *
+ * `authorKind` — bog'lanish TURI (`TgUser.linkKind` bilan ayni ma'noda),
+ * ROL EMAS. `chatId` muhrlanadi: javob o'sha chatga qaytadi.
+ *
+ * ⚠️ `status`/`reply`/`reviewed*`/`replied*` ustunlariga BOT TEGMAYDI —
+ * ular panelning maydoni. Bot `INSERT` da ularni berib yubormasligi kerak,
+ * aks holda ma'muriyatning javobi ustiga yozilardi.
+ */
+model Issue {
+  id         String      @id @db.Char(24)
+  categoryId String      @map("category_id") @db.Char(24)
+  userId     String      @map("user_id") @db.Char(24)
+  authorKind String      @map("author_kind")
+  body       String
+  status     IssueStatus @default(new)
+
+  telegramId String? @map("telegram_id")
+  chatId     String? @map("chat_id")
+
+  reply      String?
+  reviewedBy String?   @map("reviewed_by") @db.Char(24)
+  reviewedAt DateTime? @map("reviewed_at")
+  repliedAt  DateTime? @map("replied_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  category IssueCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([categoryId])
+  @@index([userId])
+  @@map("issues")
+}

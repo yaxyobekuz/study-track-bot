@@ -83,6 +83,10 @@ const AUTO_ID_MODELS = new Set([
   // qo'shilmasa `id` bo'sh ketadi va INSERT yiqiladi (jadvalda
   // `@default` yo'q: ID 24-hex ObjectId bo'lishi shart).
   "ActivityEvent",
+  // ⚠️ Botdan yuborilgan muammo (`issues`). Kategoriyalar admin panelda
+  // yaratiladi, shuning uchun `IssueCategory` bu ro'yxatda YO'Q — bot
+  // uni faqat o'qiydi.
+  "Issue",
 ]);
 
 const autoIdExtension = {

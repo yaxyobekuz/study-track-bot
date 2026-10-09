@@ -191,6 +191,60 @@ Hisobingiz bu Telegram akkauntiga bog'langan.`,
   STAFF_ACCESS_REVOKED:
     "🔒 Hisobingiz faol emas — ma'lumotlarga kirish yopilgan.\n\nSavollar bo'lsa ma'muriyatga murojaat qiling.",
 
+  // ── MUAMMO YUBORISH (ikki oqimda ham bir xil) ───────────────
+  //
+  // ⚠️ `BTN_ISSUE` IKKALA MENYUDA TURADI va bu "tugma matnlari ikki
+  // menyuda takrorlanmaydi" qoidasiga qarshi emas: qoida bir xil satr
+  // IKKI BOSHQA amalga olib borishini taqiqlaydi. Bu tugma esa
+  // `BTN_SETTINGS` kabi BITTA amalni ochadi — handler ichida oqim
+  // bo'yicha shoxlanadi.
+  BTN_ISSUE: "📨 Muammo yuborish",
+
+  // Muammo oqimidan chiqish. ⚠️ Kategoriya nomi bilan mos tushmasligi
+  // kerak: klaviaturada u kategoriyalar bilan yonma-yon turadi.
+  BTN_ISSUE_CANCEL: "❌ Bekor qilish",
+
+  ISSUE_PICK_CATEGORY: `📨 *Muammo yuborish*
+
+Muammoyingiz qaysi yo'nalishga tegishli? Pastdagi tugmalardan birini tanlang.`,
+
+  // ⚠️ Kategoriya YO'Q — bu sozlama masalasi, foydalanuvchining xatosi
+  // emas: shuning uchun "xatolik" deyilmaydi.
+  ISSUE_NO_CATEGORIES: `📭 Hozircha muammo yo'nalishlari sozlanmagan.
+
+Iltimos, keyinroq urinib ko'ring yoki ma'muriyatga og'zaki murojaat qiling.`,
+
+  // Klaviatura MIJOZDA qoladi: kategoriya o'chirilgandan keyin ham eski
+  // tugma bosilishi mumkin.
+  ISSUE_CATEGORY_UNKNOWN:
+    "⚠️ Bu yo'nalish endi mavjud emas. Pastdagi tugmalardan birini tanlang.",
+
+  ISSUE_ENTER_BODY: (categoryName) =>
+    `📝 Yo'nalish: *${categoryName}*
+
+Endi muammoyingizni batafsil yozib yuboring. Qanchalik aniq yozsangiz, shunchalik tez yechiladi.`,
+
+  ISSUE_TOO_SHORT: (min) =>
+    `⚠️ Matn juda qisqa — kamida *${min} belgi* yozing.
+
+Muammoni tushunarli bayon qilib yuboring.`,
+
+  // ⚠️ Matn KESILMAYDI, qayta yozish taklif qilinadi: kesilsa odam
+  // yozganining yarmi jimgina yo'qolardi.
+  ISSUE_TOO_LONG: (max) =>
+    `⚠️ Matn juda uzun — *${max} belgi* dan oshmasligi kerak.
+
+Eng muhimini qoldirib, qisqartirib yuboring.`,
+
+  ISSUE_SENT: (categoryName) =>
+    `✅ *Muammoyingiz qabul qilindi!*
+
+🏷 Yo'nalish: *${categoryName}*
+
+Ma'muriyat ko'rib chiqadi va javob aynan shu yerga — botga keladi.`,
+
+  ISSUE_CANCELLED: "❌ Muammo yuborish bekor qilindi.",
+
   // Sozlamalar
   SETTINGS_MENU: `⚙️ *Sozlamalar*
 

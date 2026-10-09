@@ -53,6 +53,39 @@ esa `TgUser.userId` da. Yorug'lik nuqtasi — `getTgUser()`: u `kind`, `person`
   ikki rolda bir vaqtda tura olmaydi — login almashtiradi va bot buni aytadi
   (`SWITCHED_TO_*`).
 
+## Muammo yuborish
+
+Ikki oqimda ham bitta tugma — **📨 Muammo yuborish**. Ikki qadam: oddiy
+klaviaturadan **kategoriya** tanlanadi, so'ng **matn** yoziladi
+(`bot.handler.js#handleIssueStart` → `handleIssueCategory` → `handleIssueBody`).
+
+- **Kategoriyalar admin panelda sozlanadi**, botda yaratilmaydi. Bot faqat
+  `isActive = true` bo'lganlarini ko'rsatadi. Kategoriya yo'q bo'lsa oqim
+  BOSHLANMAYDI (`issues.category_id` majburiy).
+- **Tugma matni — kategoriya nomining O'ZI.** Oddiy klaviatura
+  `callback_data` bermaydi, shuning uchun kategoriya nom bo'yicha va faqat
+  FAOLLAR orasidan topiladi (`issue.service#findActiveCategoryByName`):
+  klaviatura mijozda qoladi, kategoriya esa shu orada o'chirilgan bo'lishi
+  mumkin.
+- **`issue.service.js` — botning YAGONA YOZADIGAN service'i** va bu
+  `staff.service.js` ustidagi "faqat o'qish" qoidasiga qarshi emas. O'sha
+  qoida SERVERDAGI biznes qoidasini takrorlamaslik haqida; muammo
+  yaratishda serverda qoida YO'Q — server muammo yaratmaydi, faqat ko'rib
+  chiqadi (`status`, `reply`, `reviewed*`). Ikki tomon bir ustunga yozmaydi.
+  Bot bu ustunlarga HECH QACHON tegmaydi.
+- **`Issue` — `AUTO_ID_MODELS` da** (`config/branch.js`). Bo'lmasa `id` bo'sh
+  ketib INSERT yiqilardi. `IssueCategory` esa ro'yxatda YO'Q — bot uni
+  yaratmaydi.
+- **`chatId` muhrlanadi.** Javob keyin shu chatga qaytadi
+  (`server/src/services/issueNotification.service.js`) — bog'lanish uzilgan
+  yoki o'sha telegramga boshqa hisob bog'langan bo'lsa ham.
+- **`authorKind` — bog'lanish TURI, rol emas.** `"student"` da `userId`
+  o'quvchi, lekin botdan foydalanadigan odam uning OTA-ONASI.
+- **Muammo holati menyu tugmalaridan KEYIN tekshiriladi** — login
+  holatlarining teskarisi (`handleMessage` dagi izoh). Menyu tugmasi bosilsa
+  oqim tashlab ketilgan deb hisoblanadi va holat tozalanadi; aks holda
+  bosilgan tugmaning MATNI muammo mazmuni bo'lib ketardi.
+
 ## Sums
 
 Summa matni — `message.service.js` dagi `formatSum`: "6 741 000 so'm".
