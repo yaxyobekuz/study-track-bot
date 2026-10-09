@@ -54,12 +54,19 @@ const getStudentGradesByDate = async (studentId, date = new Date()) => {
 
 /**
  * Get all active TgUsers (for sending notifications)
+ *
+ * ⚠️ `linkKind: "student"` FILTRI SHART. Botga endi xodim ham o'z logini
+ * bilan kiradi va uning qatorida `student` NULL: filtrsiz kunlik BAHO
+ * hisoboti xodimlarga ham ketardi — pastdagi `filter` ularni tashlab
+ * yuborgan bo'lsa ham, har kecha ularning soni bo'yicha bekorga so'rov
+ * qilinardi va "nechta hisobot tayyor" logi haqiqatdan uzilardi.
+ *
  * @returns {Array}
  */
 const getActiveNotificationUsers = async () => {
   try {
     const tgUsers = await prisma.tgUser.findMany({
-      where: { isActive: true, notificationsEnabled: true },
+      where: { linkKind: "student", isActive: true, notificationsEnabled: true },
     });
 
     // student — scalar String (relation yo'q), qo'lda yuklaymiz
