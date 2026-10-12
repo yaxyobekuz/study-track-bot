@@ -79,6 +79,11 @@ klaviaturadan **kategoriya** tanlanadi, so'ng **matn** yoziladi
 - **`chatId` muhrlanadi.** Javob keyin shu chatga qaytadi
   (`server/src/services/issueNotification.service.js`) — bog'lanish uzilgan
   yoki o'sha telegramga boshqa hisob bog'langan bo'lsa ham.
+- **Javob IKKI YO'L bilan kelishi mumkin** va bot uchun ikkisi ayni:
+  ma'muriyat panelda qo'lda yozadi, YOKI muammoni hal qilish uchun berilgan
+  topshiriq tasdiqlanadi va javob ijrochining yakunlash izohidan yig'iladi
+  (`server/src/services/issueTask.service.js`). Botda hech qanday farq yo'q —
+  ikkalasi ham ayni xabar sifatida yetib boradi.
 - **`authorKind` — bog'lanish TURI, rol emas.** `"student"` da `userId`
   o'quvchi, lekin botdan foydalanadigan odam uning OTA-ONASI.
 - **Muammo holati menyu tugmalaridan KEYIN tekshiriladi** — login
