@@ -178,3 +178,45 @@ model TelegramGroup {
   @@index([isOfficial])
   @@map("telegram_groups")
 }
+
+/**
+ * RASMIY GURUHDAN KELGAN XABAR — AI tahlili uchun XOMASHYO.
+ *
+ * Bot rasmiy guruhlarda KUZATUVCHI: hech narsa yozmaydi, javob bermaydi,
+ * faqat o'qib shu jadvalga qo'yadi. Tahlilni SERVER qiladi (har 30
+ * daqiqada, `server/src/jobs/groupSignal.job.js`) — botda OpenAI yo'q va
+ * bo'lishi ham shart emas.
+ *
+ * ⚠️ FAQAT `isOfficial` GURUHDAN yoziladi (`group.service.js#captureMessage`).
+ * Rasmiy belgisi — ma'muriyatning kuzatuvga ochiq roziligi.
+ *
+ * ⚠️ BU NAVBAT, ARXIV EMAS: server tahlildan keyin o'chiradi. Shuning
+ * uchun bu yerda indeks va maydonlar minimal — uzoq saqlanadigan narsa
+ * emas.
+ *
+ * ⚠️ SERVERDAGI NUSXASI BILAN BIR XIL BO'LISHI SHART:
+ * `server/prisma/platform/schema.prisma`. Migratsiya o'sha yerda.
+ */
+model GroupMessage {
+  id String @id @db.Char(24)
+
+  chatId    String @map("chat_id")
+  messageId String @map("message_id")
+
+  senderTgId String? @map("sender_tg_id")
+  senderName String? @map("sender_name")
+
+  text String
+
+  replyToText String? @map("reply_to_text")
+
+  sentAt DateTime @map("sent_at")
+
+  analyzedAt DateTime? @map("analyzed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([chatId, messageId])
+  @@index([analyzedAt, sentAt])
+  @@map("group_messages")
+}

@@ -1282,6 +1282,10 @@ const registerHandlers = (bot) => {
     // KERAK EMAS — reyestr platformada (`group.service.js` izohi).
     if (msg.chat && msg.chat.type !== "private") {
       safe(groupService.touchFromMessage(msg.chat), "Group touch");
+      // KUZATUV — faqat RASMIY guruhdan va faqat O'QISH uchun. Bot
+      // guruhga hech narsa yozmaydi; xabar tahlil navbatiga tushadi,
+      // xulosani server chiqaradi (`groupSignal.job.js`).
+      safe(groupService.captureMessage(msg), "Group capture");
       return;
     }
 

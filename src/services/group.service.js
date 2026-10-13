@@ -39,6 +39,8 @@
  * belgisi jimgina o'chib ketardi.
  */
 
+const { ObjectId } = require("bson");
+
 const { platformPrisma } = require("../config/branch");
 
 /**
@@ -49,6 +51,15 @@ const { platformPrisma } = require("../config/branch");
  * reyestrni har bir foydalanuvchi bilan to'ldirib yuborardi.
  */
 const GROUP_TYPES = new Set(["group", "supergroup", "channel"]);
+
+/**
+ * Bitta xabardan saqlanadigan eng uzun matn.
+ *
+ * ⚠️ CHEGARA KERAK: guruhga uzun hujjat tashlansa u butunlay navbatga
+ * tushib, AI so'rovini ham, bazani ham shishirardi. 2000 belgi — muammo
+ * bayoni uchun yetarlidan ko'p.
+ */
+const MAX_TEXT = 2000;
 
 /** Telegram'ning `ChatMember.status` qiymati — "bot hali ichidami". */
 const PRESENT_STATUSES = new Set(["administrator", "member", "restricted"]);
@@ -140,10 +151,92 @@ const touchFromMessage = async (chat) => {
   });
 };
 
+/**
+ * KUZATUV — rasmiy guruhdagi xabarni tahlil navbatiga yozadi.
+ *
+ * ⚠️ BOT BU YERDA FAQAT KUZATUVCHI. Hech narsa yozmaydi, javob bermaydi,
+ * reaksiya qo'ymaydi — guruhdagilar botning o'qiyotganini sezmaydi ham.
+ * Xabar shunchaki navbatga tushadi, xulosani esa SERVER chiqaradi
+ * (`groupSignal.job.js`, har 30 daqiqada).
+ *
+ * ⚠️ FAQAT `isOfficial` GURUHDAN. Reyestrda bot tasodifan qo'shilgan,
+ * test va umuman begona guruhlar ham bor — ularning yozishmasini o'qish
+ * mumkin emas. "Rasmiy" belgisi ma'muriyat qo'lida va aynan shu
+ * KUZATUVGA ROZILIK ma'nosini bildiradi.
+ *
+ * ⚠️ XABAR MATNI BO'LMASA YOZILMAYDI. Stiker, rasm, ovozli xabar va
+ * xizmat xabarlari (kirdi/chiqdi) tahlilga hech narsa bermaydi, lekin
+ * navbatni va AI hisobini shishirardi. Rasm izohi (`caption`) esa matn —
+ * u olinadi.
+ *
+ * ⚠️ BOTNING O'ZI VA BOSHQA BOTLAR O'TKAZIB YUBORILADI: bot yozgan
+ * hisobot "guruhda muammo bor" degan signalga aylanib ketardi.
+ *
+ * @param {object} msg Telegram `Message`
+ * @returns {Promise<object|null>} yozilgan qator yoki `null`
+ */
+const captureMessage = async (msg) => {
+  const chat = msg?.chat;
+  if (!chat || !GROUP_TYPES.has(chat.type)) return null;
+
+  // Bot yozgan xabar tahlil qilinmaydi (o'z aksini muammo deb topmasin).
+  if (msg.from?.is_bot) return null;
+
+  const text = (msg.text || msg.caption || "").trim();
+  if (!text) return null;
+
+  const chatId = chat.id.toString();
+
+  // ⚠️ GURUH RASMIYMI — HAR XABARDA TEKSHIRILADI. Belgi admin panelda
+  // istalgan payt olib tashlanishi mumkin va o'shandan keyingi xabar
+  // yozilmasligi kerak. Bu bitta indeksli o'qish (`chat_id` — PK).
+  const group = await platformPrisma.telegramGroup.findUnique({
+    where: { chatId },
+    select: { isOfficial: true },
+  });
+  if (!group?.isOfficial) return null;
+
+  const sender = msg.from;
+  const senderName =
+    [sender?.first_name, sender?.last_name].filter(Boolean).join(" ") ||
+    sender?.username ||
+    null;
+
+  // Javob bo'lsa — nimaga javob ekani. "Ha, menda ham shunday" degan
+  // xabar o'zicha ma'nosiz, javob bo'lgani bilan ma'noli.
+  const replyTo = msg.reply_to_message;
+  const replyToText = replyTo
+    ? (replyTo.text || replyTo.caption || "").trim().slice(0, MAX_TEXT) || null
+    : null;
+
+  const data = {
+    id: new ObjectId().toHexString(),
+    chatId,
+    messageId: msg.message_id.toString(),
+    senderTgId: sender?.id ? sender.id.toString() : null,
+    senderName,
+    text: text.slice(0, MAX_TEXT),
+    replyToText,
+    // Telegram `date` — SONIYADA.
+    sentAt: msg.date ? new Date(msg.date * 1000) : new Date(),
+  };
+
+  // ⚠️ `upsert` + bo'sh `update`: bir xabar ikki marta kelsa (bot qayta
+  // ishga tushdi, Telegram takrorladi) jim o'tkaziladi. `create` bilan
+  // yozilsa unique xatosi logni to'ldirardi.
+  return platformPrisma.groupMessage.upsert({
+    where: { chatId_messageId: { chatId, messageId: data.messageId } },
+    update: {},
+    create: data,
+  });
+};
+
 module.exports = {
   GROUP_TYPES,
   PRESENT_STATUSES,
+  MAX_TEXT,
   isPresent,
   recordMembership,
   touchFromMessage,
+  captureMessage,
 };
