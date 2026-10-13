@@ -30,6 +30,7 @@ const {
 } = require("../services");
 const staffService = require("../services/staff.service");
 const issueService = require("../services/issue.service");
+const groupService = require("../services/group.service");
 const { runWithBranch } = require("../config/branch");
 const {
   formatDailyReport,
@@ -1273,6 +1274,17 @@ const registerHandlers = (bot) => {
 
   // All messages
   bot.on("message", (msg) => {
+    // GURUHDAN KELGAN XABAR — reyestr uchun zaxira yo'l, shaxsiy oqimga
+    // ALOQASI YO'Q va shuning uchun shu yerda tugaydi.
+    //
+    // ⚠️ `my_chat_member` o'tmishga qaramaydi: bot allaqachon a'zo bo'lgan
+    // guruhlar ro'yxatga faqat shu yo'l bilan tushadi. Filial konteksti
+    // KERAK EMAS — reyestr platformada (`group.service.js` izohi).
+    if (msg.chat && msg.chat.type !== "private") {
+      safe(groupService.touchFromMessage(msg.chat), "Group touch");
+      return;
+    }
+
     if (msg.text && !msg.text.startsWith("/")) {
       safe(
         inBranch(msg.from?.id?.toString(), () => handleMessage(bot, msg)),
@@ -1280,6 +1292,12 @@ const registerHandlers = (bot) => {
       );
     }
   });
+
+  // Botning guruhdagi holati o'zgardi — qo'shildi, admin bo'ldi, huquqi
+  // o'zgardi yoki chiqarildi. Reyestrning ASOSIY manbasi.
+  bot.on("my_chat_member", (update) =>
+    safe(groupService.recordMembership(update), "Chat member handler"),
+  );
 
   // Callback queries
   bot.on("callback_query", (query) =>

@@ -131,3 +131,50 @@ model TelegramDirectory {
   @@index([userId])
   @@map("telegram_directory")
 }
+
+/**
+ * BOT KO'RGAN GURUH/KANAL — admin paneldagi "Bot sozlamalari" tabi
+ * aynan shu jadvalni ko'rsatadi.
+ *
+ * ⚠️ BOT BU YERGA YOZADI (`TelegramDirectory` dan keyin ikkinchisi).
+ * Telegram Bot API "qaysi guruhlarda adminman" degan savolga javob
+ * bermaydi, shuning uchun ro'yxat `my_chat_member` hodisasidan
+ * to'planadi — serverdagi izohga qara
+ * (`server/prisma/platform/schema.prisma#TelegramGroup`).
+ *
+ * ⚠️ `chatId` — PK va TABIIY kalit, ya'ni `id` generatsiya kerak emas:
+ * shu sababli bu model `AUTO_ID_MODELS` ro'yxatida YO'Q.
+ *
+ * ⚠️ `isOfficial` ni BOT HECH QACHON o'zgartirmaydi — u admin panelda
+ * qo'yiladigan belgi. Bot `upsert` qilganda `update` bloki faqat
+ * Telegram'dan kelgan maydonlarga tegadi.
+ */
+model TelegramGroup {
+  chatId String @id @map("chat_id")
+
+  type     String  @default("group")
+  title    String
+  username String?
+
+  status String @default("member")
+
+  canPostMessages Boolean @default(false) @map("can_post_messages")
+  canInviteUsers  Boolean @default(false) @map("can_invite_users")
+
+  isOfficial     Boolean   @default(false) @map("is_official")
+  officialBy     String?   @map("official_by") @db.Char(24)
+  officialAt     DateTime? @map("official_at")
+  officialBranch String?   @map("official_branch") @db.Char(24)
+
+  addedByTgId String? @map("added_by_tg_id")
+
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([isOfficial])
+  @@map("telegram_groups")
+}
