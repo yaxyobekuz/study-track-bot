@@ -60,8 +60,35 @@ const buildSchemaUrl = (schemaName) => {
 // Bot yozadigan yagona platforma modeli — TelegramDirectory (uning PK'si
 // `telegramId`, ya'ni generatsiya kerak emas), shuning uchun bu client'da
 // auto-id kengaytmasi yo'q.
+//
+// ⚠️ POOL SHU YERDA HAM CHEKLANADI. Bu client `buildSchemaUrl` dan
+// O'TMAYDI (ulanish satri `PLATFORM_DATABASE_URL` dan to'g'ridan-to'g'ri
+// keladi), ya'ni yuqoridagi `connection_limit=3` unga TEGMAYDI va Prisma
+// standartiga (CPU×2+1) tushib qolardi: 16 yadroli mashinada 33 ta ulanish
+// — bitta botning o'zi butun `max_connections` ning uchdan birini yeb,
+// serverga "too many connections for role" xatosini qaytartirardi.
+// Serverdagi `config/platformPrisma.js` bilan AYNI mulohaza va AYNI
+// qiymat — ikkalasi birga o'zgaradi.
+//
+// Bot platformadan faqat yo'naltirgichni o'qiydi (telegramId → filial)
+// va guruhlar reyestriga yozadi, ya'ni kichik pool yetarli.
+const PLATFORM_CONNECTION_LIMIT = "5";
+
+const buildPlatformUrl = (baseUrl) => {
+  try {
+    const url = new URL(baseUrl);
+    // Qo'lda ko'rsatilgan qiymat USTUN turadi.
+    if (!url.searchParams.has("connection_limit")) {
+      url.searchParams.set("connection_limit", PLATFORM_CONNECTION_LIMIT);
+    }
+    return url.toString();
+  } catch {
+    return baseUrl; // noto'g'ri URL — `validateConfig` baribir xato beradi
+  }
+};
+
 const platformPrisma = new PlatformClient({
-  datasourceUrl: config.platformDatabaseUrl,
+  datasourceUrl: buildPlatformUrl(config.platformDatabaseUrl),
   log: ["error"],
 });
 
