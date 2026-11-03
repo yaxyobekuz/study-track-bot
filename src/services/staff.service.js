@@ -118,11 +118,16 @@ const getRoleLabel = async (person) => {
  * ko'rsatilmaydi, davomat hukmi (`isLate`, `lateMinutes`) esa baribir
  * serverdan keladi va o'z kuchida qoladi.
  *
+ * ⚠️ `none` (ish vaqti yo'q) ham `null`: roldan meros OLINMAYDI. Aks holda
+ * davomat talab qilinmaydigan xodim botda rolning ish vaqtini ko'rib,
+ * o'zini kechikkan deb o'ylab yurardi.
+ *
  * @param {object} person
  * @returns {Promise<{startTime: string, endTime: string}|null>}
  */
 const getEffectiveWorkTime = async (person) => {
   if (person.workTimeSource === "schedule") return null;
+  if (person.workTimeSource === "none") return null;
 
   if (person.workStartTime && person.workEndTime) {
     return { startTime: person.workStartTime, endTime: person.workEndTime };
