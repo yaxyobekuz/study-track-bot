@@ -17,6 +17,9 @@
 // degan savol tugma matniga emas, bazadagi `linkKind` ga qarab beriladi.
 
 const TEXTS = require("../data/texts.data");
+// Xodim o'z oyligini ko'rmaydi — bayroq serverdagisi bilan birga
+// o'zgaradi (`selfPayroll.data.js` izohiga qarang)
+const { SELF_PAYROLL_VISIBLE } = require("../data/selfPayroll.data");
 const {
   authenticateUser,
   linkTelegramUser,
@@ -125,10 +128,14 @@ const getStaffKeyboard = (showLessons = false) => {
     keyboard.push([{ text: TEXTS.BTN_STAFF_LESSONS }]);
   }
 
-  keyboard.push([
-    { text: TEXTS.BTN_STAFF_PAYROLL },
-    { text: TEXTS.BTN_SETTINGS },
-  ]);
+  // ⚠️ Oylik yopilganda tugma ham qo'yilmaydi (`selfPayroll.data.js`),
+  // lekin uning MATNI `MENU_BUTTONS` da QOLADI: eski klaviatura mijozda
+  // turadi va bosilgan tugma muammo oqimining matni bo'lib ketmasligi kerak.
+  keyboard.push(
+    SELF_PAYROLL_VISIBLE
+      ? [{ text: TEXTS.BTN_STAFF_PAYROLL }, { text: TEXTS.BTN_SETTINGS }]
+      : [{ text: TEXTS.BTN_SETTINGS }],
+  );
 
   keyboard.push([{ text: TEXTS.BTN_ISSUE }]);
 
@@ -763,6 +770,18 @@ const handleStaffPayroll = async (bot, msg) => {
   if (!tgUser) return;
 
   trackStaff(tgUser, "payroll");
+
+  // ⚠️ TUGMA YASHIRILGANI YETMAYDI: klaviatura mijozda qoladi, ya'ni eski
+  // tugma baribir bosiladi. Shuning uchun bazaga umuman borilmaydi.
+  if (!SELF_PAYROLL_VISIBLE) {
+    await sendMessage(
+      bot,
+      chatId,
+      TEXTS.STAFF_PAYROLL_CLOSED,
+      await keyboardFor(tgUser),
+    );
+    return;
+  }
 
   const data = await staffService.getPayroll(tgUser.person);
   await sendMessage(

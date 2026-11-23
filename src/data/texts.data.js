@@ -156,6 +156,10 @@ Pastdagi menyudan o'zingizga tegishli ma'lumotlarni ko'rishingiz mumkin.`,
     "📭 Sizda hali hisoblangan oylik yo'q.\n\n_Oylik oy yakunida hisoblanadi._",
 
   STAFF_PAYROLL_CANCELLED: "🚫 *Bu oylik bekor qilingan.*",
+  // Oylik xodimga yopilgan davr uchun (`selfPayroll.data.js`): sabab
+  // AYTILADI — "tugma ishlamayapti" deb o'ylanmasligi kerak.
+  STAFF_PAYROLL_CLOSED:
+    "🔒 *Oylik ma'lumoti vaqtincha yopiq.*\n\nSavol bo'lsa ma'muriyatga murojaat qiling.",
 
   STAFF_PAYROLL_STATUS: {
     unpaid: "🔴 Holat: *To'lanmagan*",
